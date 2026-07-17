@@ -1,0 +1,104 @@
+default_language_version:
+  python: python3.14
+
+repos:
+  # Run manually in CI skipping the branch checks
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.15.15
+    hooks:
+      - id: ruff
+        name: "Ruff check"
+        args:
+          - --fix
+      - id: ruff-format
+        name: "Ruff format"
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: check-executables-have-shebangs
+        name: "Check scripts"
+        stages: [manual]
+      - id: no-commit-to-branch
+        name: "Check branch"
+        args:
+          - --branch=main
+  - repo: https://github.com/asottile/pyupgrade
+    rev: v3.21.2
+    hooks:
+      - id: pyupgrade
+        name: "Check Py upgrade"
+        args: [--py311-plus]
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.4.2
+    hooks:
+      - id: codespell
+        name: "Check Code Spelling"
+        args:
+          - --ignore-words-list=aiport,astroid,checkin,currenty,hass,iif,incomfort,lookin,nam,NotIn
+          - --skip="./.*,*.csv,*.json,*.ambr"
+          - --quiet-level=2
+        exclude_types: [csv, json]
+        exclude: ^userdata/|^fixtures/
+  - repo: https://github.com/PyCQA/bandit
+    rev: 1.9.4
+    hooks:
+      - id: bandit
+        name: "Bandit checking"
+        args:
+          - --quiet
+          - --format=custom
+          - --configfile=tests/bandit.yaml
+        files: ^(phais|tests|script)/.+\.py$
+  - repo: https://github.com/adrienverge/yamllint.git
+    rev: v1.38.0
+    hooks:
+      - id: yamllint
+        name: "YAML linting"
+  - repo: https://github.com/shellcheck-py/shellcheck-py
+    rev: v0.11.0.1
+    hooks:
+      - id: shellcheck
+        name: "Shell checking"
+        args:
+          - --external-sources
+  - repo: https://github.com/cdce8p/python-typing-update
+    rev: v0.8.1
+    hooks:
+      # Run `python-typing-update` hook manually from time to time
+      # to update python typing syntax.
+      # Will require manual work, before submitting changes!
+      - id: python-typing-update
+        name: "Python typing"
+        stages: [manual]
+        args:
+          - --py39-plus
+          - --force
+          - --keep-updates
+        files: ^(phais|tests|script)/.+\.py$
+  - repo: https://github.com/jackdewinter/pymarkdown
+    rev: v0.9.37
+    hooks:
+      - id: pymarkdown
+        name: MarkDown Lint
+  - repo: local
+    hooks:
+      - id: pytest
+        name: "Testing using pytest"
+        entry: script/run-in-env.sh pytest --log-level info tests/ --cov='phais/'
+        language: script
+        types: [python]
+        pass_filenames: false
+        files: ^(phais|tests|script)/.+\.py$
+      - id: pylint
+        name: "Linting with pylint"
+        entry: script/run-in-env.sh pylint -j 0
+        language: script
+        types: [python]
+        files: ^(phais|tests|script)/.+\.py$
+      - id: mypy
+        name: "Typing check using mypy"
+        entry: script/run-in-env.sh mypy
+        language: script
+        require_serial: true
+        types_or: [python, pyi]
+        files: ^(phais|tests|script)/.+\.(py|pyi)$
