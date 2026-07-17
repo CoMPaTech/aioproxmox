@@ -4,7 +4,7 @@ default_language_version:
 repos:
   # Run manually in CI skipping the branch checks
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.15
+    rev: v0.15.22
     hooks:
       - id: ruff
         name: "Ruff check"
@@ -29,7 +29,7 @@ repos:
         name: "Check Py upgrade"
         args: [--py311-plus]
   - repo: https://github.com/codespell-project/codespell
-    rev: v2.4.2
+    rev: v2.4.3
     hooks:
       - id: codespell
         name: "Check Code Spelling"
@@ -76,7 +76,7 @@ repos:
           - --keep-updates
         files: ^(phais|tests|script)/.+\.py$
   - repo: https://github.com/jackdewinter/pymarkdown
-    rev: v0.9.37
+    rev: v0.9.39
     hooks:
       - id: pymarkdown
         name: MarkDown Lint

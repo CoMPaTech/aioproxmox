@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name            = "phais"
-version         = "0.0.1a1"
+version         = "0.0.1a3"
 license         = "MIT"
 description     = "Proxmox Home Assistant Integration Service for Home Assistant."
 readme          = "README.md"
@@ -22,8 +22,8 @@ maintainers = [
 ]
 requires-python = ">=3.14"
 dependencies    = [
-        "aiohttp>=3.8.0",
-        "mashumaro>=3.14.0",
+        "aiohttp>=3.14",
+        "mashumaro>=3.22",
 ]
 
 [project.urls]
