@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools~=80.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name            = "phais"
+version         = "0.0.1"
+license         = "MIT"
+description     = "Proxmox Home Assistant Integration Service for Home Assistant."
+readme          = "README.md"
+keywords        = ["home", "automation", "proxmox", "pve", "proxmoxve", "pdm", "proxmoxdm", "pbs", "proxmoxbs"]
+classifiers     = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3.14",
+    "Topic :: Home Automation",
+]
+maintainers = [
+        { name = "CoMPaTech" },
+        { name = "erwindouna" },
+]
+requires-python = ">=3.14"
+dependencies    = [
+        "aiohttp>=3.8.0",
+        "mashumaro>=3.14.0",
+]
+
+[project.urls]
+"Source Code" = "https://github.com/compatech/python-phais"
+"Bug Reports" = "https://github.com/compatech/python-phais/issues"
+
