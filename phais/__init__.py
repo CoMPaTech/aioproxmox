@@ -8,15 +8,9 @@ import aiohttp
 
 from .const import DEFAULT_PVE_PORT
 from .exceptions import AuthenticationError
-from .helpers import pve_find_node_in_cache, pve_reconcile_status_cache
 from .model import PVECapabilities
-from .model.pve import (
-    ClusterResourcesCollection,
-    ClusterStatusCache,
-    LXCStatus,
-    NodeStatus,
-    QemuStatus,
-)
+from .model.pve import ClusterResourcesCollection, ClusterStatusCache
+from .proxies import ClusterProxy, NodeProxy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -232,7 +226,13 @@ class Backend:
         else:
             raise ValueError("No valid authentication credentials were supplied")
 
-    async def _request(
+    async def connect(self) -> ClusterResourcesCollection:
+        """Authenticate and gather cluster resources."""
+        if hasattr(self.auth, "async_init"):
+            await self.auth.async_init()
+        return await self.cluster.resources()
+
+    async def request(
         self, method: str, path: str, json_data: dict[str, Any] | None = None
     ) -> dict[Any, Any] | list[Any] | dict[str, Any]:
         """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
@@ -275,85 +275,11 @@ class Backend:
             data = payload.get("data", {})
             return data if isinstance(data, (dict, list)) else {}
 
-    async def pve_cluster_resources(self) -> ClusterResourcesCollection:
-        """A direct, optimized call returning the complete cluster resources block."""
-        raw_data = await self._request("GET", "cluster/resources")
-        self.cluster_resources = ClusterResourcesCollection.from_dict(
-            {"resources": raw_data}
-        )
+    @property
+    def cluster(self) -> ClusterProxy:
+        """Add cluster endpoint."""
+        return ClusterProxy(self)
 
-        # Update status_cache for rogue entries
-        self.status_cache = pve_reconcile_status_cache(
-            self.cluster_resources, self.status_cache
-        )
-
-        return self.cluster_resources
-
-    async def pve_node_status(self, node: str) -> NodeStatus:
-        """Fetch deep sensoric and operational status for a specific physical node."""
-        raw_data = await self._request("GET", f"nodes/{node}/status")
-        if not isinstance(raw_data, dict):
-            raise TypeError(
-                f"Expected dict response from node status, got {type(raw_data)}"
-            )
-        return NodeStatus.from_dict(raw_data)
-
-    async def pve_qemu_status(self, vmid: int) -> QemuStatus:
-        """Fetch deep sensoric metrics for a QEMU VM, dynamically inferring its host node."""
-        node = pve_find_node_in_cache(self.cluster_resources, vmid)
-
-        if not node:
-            _LOGGER.debug(
-                "VMID %d not found in internal cache. Executing single fallback cluster fetch.",
-                vmid,
-            )
-            try:
-                await self.pve_cluster_resources()
-                node = pve_find_node_in_cache(self.cluster_resources, vmid)
-            except Exception as err:
-                raise RuntimeError(
-                    f"Failed to fetch resource map while tracking VMID {vmid}"
-                ) from err
-
-            if not node:
-                raise KeyError(
-                    f"Target QEMU VMID {vmid} could not be located anywhere in the cluster."
-                )
-
-        raw_data = await self._request(
-            "GET", f"nodes/{node}/qemu/{vmid}/status/current"
-        )
-        if not isinstance(raw_data, dict):
-            raise TypeError(
-                f"Expected dict response from qemu VM status, got {type(raw_data)}"
-            )
-        return QemuStatus.from_dict(raw_data)
-
-    async def pve_lxc_status(self, vmid: int) -> LXCStatus:
-        """Fetch deep sensoric metrics for a container, dynamically inferring its host node."""
-        node = pve_find_node_in_cache(self.cluster_resources, vmid)
-
-        if not node:
-            _LOGGER.debug(
-                "VMID %d not found in internal cache. Executing single fallback cluster fetch.",
-                vmid,
-            )
-            try:
-                await self.pve_cluster_resources()
-                node = pve_find_node_in_cache(self.cluster_resources, vmid)
-            except Exception as err:
-                raise RuntimeError(
-                    f"Failed to fetch resource map while tracking VMID {vmid}"
-                ) from err
-
-            if not node:
-                raise KeyError(
-                    f"Target container VMID {vmid} could not be located anywhere in the cluster."
-                )
-
-        raw_data = await self._request("GET", f"nodes/{node}/lxc/{vmid}/status/current")
-        if not isinstance(raw_data, dict):
-            raise TypeError(
-                f"Expected dict response from LCX status, got {type(raw_data)}"
-            )
-        return LXCStatus.from_dict(raw_data)
+    def nodes(self, node: str) -> NodeProxy:
+        """Add nodes endpoint."""
+        return NodeProxy(self, node)
