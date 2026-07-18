@@ -22,7 +22,7 @@ async def main() -> None:
     args = parser.parse_args()
 
     async with aiohttp.ClientSession() as session:
-        cluster = phais.Backend(
+        pve = phais.Backend(
             session=session,
             host=args.host,
             user=args.user,
@@ -30,16 +30,17 @@ async def main() -> None:
             verify_ssl=args.verify_ssl,
         )
 
-        if hasattr(cluster.auth, "async_init"):
-            await cluster.auth.async_init()
+        cluster = await pve.connect()
+        _LOGGER.warning(
+            "Successfully connected with %s cluster resources.", len(cluster.resources)
+        )
 
         try:
-            cluster_resources = await cluster.pve_cluster_resources()
-            resources = cluster_resources.resources
+            cluster = await pve.cluster.resources()
             _LOGGER.warning(
-                "Successfully retrieved %s cluster resources.", len(resources)
+                "Successfully updated %s cluster resources.", len(cluster.resources)
             )
-            for resource in resources:
+            for resource in cluster.resources:
                 _LOGGER.warning(
                     "- %s: %s (%s) ",
                     resource.resource_type,
@@ -50,21 +51,21 @@ async def main() -> None:
             _LOGGER.exception("Failed to fetch resources.")
 
         try:
-            node_status = await cluster.pve_node_status("pvex")
+            node_status = await pve.nodes("pvex").status()
             _LOGGER.warning("Successfully retrieved node resource")
             _LOGGER.warning(node_status)
         except Exception:
             _LOGGER.exception("Failed to fetch resources.")
 
         try:
-            vm_status = await cluster.pve_qemu_status(102)
+            vm_status = await pve.nodes("pvex").qemu(102).status.current()
             _LOGGER.warning("Successfully retrieved qemu resource")
             _LOGGER.warning(vm_status)
         except Exception:
             _LOGGER.exception("Failed to fetch resources.")
 
         try:
-            lxc_status = await cluster.pve_lxc_status(501)
+            lxc_status = await pve.nodes("pvex").lxc(501).status.current()
             _LOGGER.warning("Successfully retrieved lxc resource")
             _LOGGER.warning(lxc_status)
         except Exception:
