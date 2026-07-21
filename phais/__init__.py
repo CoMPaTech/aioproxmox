@@ -7,10 +7,10 @@ from typing import Any
 import aiohttp
 
 from .const import DEFAULT_PVE_PORT
+from .endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
 from .exceptions import AuthenticationError
-from .model import PVECapabilities
+from .model import PVECapabilities, PVEPermissions
 from .model.pve import ClusterResourcesCollection, ClusterStatusCache
-from .proxies import ClusterProxy, NodeProxy
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -37,12 +37,12 @@ class ProxmoxHTTPAuthBase:
         self.verify_ssl = verify_ssl
         self.capabilities: PVECapabilities
 
-    def get_headers(self) -> dict[str, str]:
-        """Return headers."""
-        return {}
-
     def get_cookies(self) -> dict[str, str]:
         """Return cookies."""
+        return {}
+
+    def get_headers(self) -> dict[str, str]:
+        """Return headers."""
         return {}
 
     async def check_and_refresh(self, method: str) -> None:
@@ -140,17 +140,17 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
         """Return cookies."""
         return {f"{self.service}AuthCookie": self.pve_auth_ticket}
 
+    def get_headers(self) -> dict[str, str]:
+        """Return headers."""
+        # Return CSRF prevention tokens strictly for mutation traffic
+        return {"CSRFPreventionToken": self.csrf_prevention_token}
+
     async def check_and_refresh(self, method: str) -> None:
         """Asynchronously refresh credentials if required before a request."""
         time_diff = time.monotonic() - self.birth_time
         if time_diff >= self.renew_age:
             _LOGGER.debug("Refreshing ticket (age %s)", time_diff)
             await self._get_new_tokens()
-
-    def get_headers(self) -> dict[str, str]:
-        """Return headers."""
-        # Return CSRF prevention tokens strictly for mutation traffic
-        return {"CSRFPreventionToken": self.csrf_prevention_token}
 
 
 class ProxmoxHTTPApiTokenAuth(ProxmoxHTTPAuthBase):
@@ -176,7 +176,7 @@ class ProxmoxHTTPApiTokenAuth(ProxmoxHTTPAuthBase):
         return {"Authorization": auth_string}
 
 
-class Backend:
+class ProxmoxVE:
     """Backend Engine coordinating configuration endpoints and session mapping."""
 
     def __init__(
@@ -193,7 +193,7 @@ class Backend:
         token_value: str | None = None,
         service: str = "PVE",
     ) -> None:
-        """HTTPS Backend for Proxmox."""
+        """HTTPS Backend for Proxmox Virtualisation Engine."""
         if ":" in host and not host.startswith("["):
             # Clean up base IPv4 parsing strings; ignore legacy bracket rules
             host, _ = host.split(":", 1)
@@ -205,6 +205,7 @@ class Backend:
         self.base_url = f"https://{host}:{port}/api2/json"
         self.verify_ssl = verify_ssl
         self.timeout = timeout
+        self.permissions = PVEPermissions()
         self.cluster_resources: ClusterResourcesCollection
         self.status_cache = ClusterStatusCache()
 
@@ -233,7 +234,11 @@ class Backend:
         return await self.cluster.resources()
 
     async def request(
-        self, method: str, path: str, json_data: dict[str, Any] | None = None
+        self,
+        method: str,
+        path: str,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
     ) -> dict[Any, Any] | list[Any] | dict[str, Any]:
         """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
         await self.auth.check_and_refresh(method=method)
@@ -248,10 +253,20 @@ class Backend:
             **self.auth.get_headers(),
         }
 
-        if method.upper() in ("POST", "PUT", "DELETE"):
-            if csrf_token := cookies.get("PVEAuthCookie") or headers.get(
-                "CSRFPreventionToken"
-            ):
+        request_kwargs: dict[str, Any] = {}
+
+        if method.upper() in ("GET", "DELETE"):
+            query_params = {**(params or {}), **(json_data or {})}
+            if query_params:
+                request_kwargs["params"] = {
+                    k: (int(v) if isinstance(v, bool) else str(v))
+                    for k, v in query_params.items()
+                }
+        else:
+            if json_data:
+                request_kwargs["json"] = json_data
+
+            if csrf_token := headers.get("CSRFPreventionToken"):
                 headers["CSRFPreventionToken"] = csrf_token
 
         url = f"{self.base_url}/{path.lstrip('/')}"
@@ -261,9 +276,9 @@ class Backend:
             method=method,
             url=url,
             headers=headers,
-            json=json_data,
             timeout=timeout,
             ssl=self.verify_ssl,
+            **request_kwargs,
         ) as response:
             if response.status not in (200, 201):
                 text = await response.text()
@@ -276,10 +291,15 @@ class Backend:
             return data if isinstance(data, (dict, list)) else {}
 
     @property
-    def cluster(self) -> ClusterProxy:
+    def cluster(self) -> ClusterEndpoint:
         """Add cluster endpoint."""
-        return ClusterProxy(self)
+        return ClusterEndpoint(self)
 
-    def nodes(self, node: str) -> NodeProxy:
+    @property
+    def access(self) -> AccessEndpoint:
+        """Add access endpoint."""
+        return AccessEndpoint(self)
+
+    def nodes(self, node: str) -> NodeEndpoint:
         """Add nodes endpoint."""
-        return NodeProxy(self, node)
+        return NodeEndpoint(self, node)

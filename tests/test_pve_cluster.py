@@ -2,13 +2,19 @@
 
 import logging
 
+import pytest
+
 from phais.model.pve import (
     ClusterResourcesCollection,
     NodeResource,
     QemuResource,
     ResourceStatus,
     ResourceType,
+    StoragePluginType,
     StorageResource,
+    deserialize_resource_list,
+    deserialize_tags,
+    route_pve_resource,
 )
 
 
@@ -103,3 +109,126 @@ def test_deserialize_handles_broken_items(caplog):
     assert len(collection.resources) == 1
     assert isinstance(collection.resources[0], StorageResource)
     assert "Failed to parse resource item 'node/broken-node'" in caplog.text
+
+
+def test_deserialize_tags():
+    """Test string and list handling for tags."""
+    # Semicolon separated
+    assert deserialize_tags("homeautomation; production; important") == [
+        "homeautomation",
+        "production",
+        "important",
+    ]
+    # List of strings
+    assert deserialize_tags([" tag1 ", "tag2"]) == ["tag1", "tag2"]
+    # Invalid types fallback safely
+    assert deserialize_tags(None) == []
+    assert deserialize_tags(123) == []
+
+
+def test_route_pve_resource_exceptions():
+    """Ensure route_pve_resource raises ValueError for unsupported types."""
+    with pytest.raises(
+        ValueError, match="Unsupported or missing Proxmox resource type tag"
+    ):
+        route_pve_resource({"type": "invalid_type"})
+
+    with pytest.raises(
+        ValueError, match="Unsupported or missing Proxmox resource type tag"
+    ):
+        route_pve_resource({})
+
+
+def test_resource_enum_fallbacks(caplog):
+    """Ensure ResourceType and StoragePluginType handle unknown strings gracefully."""
+    with caplog.at_level(logging.WARNING):
+        res_type = ResourceType("_future_pve_type_")
+        assert res_type == ResourceType.UNKNOWN
+        assert "Unknown Proxmox resource type encountered" in caplog.text
+
+        plugin_type = StoragePluginType("_future_plugin_")
+        assert plugin_type == StoragePluginType.UNKNOWN
+        assert "Unknown Proxmox storage plugin type encountered" in caplog.text
+
+
+def test_deserialize_lxc_and_network(caplog):
+    """Ensure LXC and Network nodes parse correctly from raw array."""
+    payload = {
+        "resources": [
+            {
+                "id": "lxc/202",
+                "vmid": 202,
+                "name": "docker-host",
+                "node": "pve-01",
+                "type": "lxc",
+                "status": "running",
+                "template": 0,
+                "maxcpu": 2,
+                "maxmem": 4096,
+                "maxdisk": 10000,
+            },
+            {
+                "id": "network/sdn1",
+                "node": "pve-01",
+                "type": "network",
+                "status": "active",
+            },
+        ]
+    }
+
+    collection = ClusterResourcesCollection.from_dict(payload)
+
+    assert len(collection.resources) == 2
+
+    lxc = collection.resources[0]
+    assert lxc.resource_type == ResourceType.LXC
+    assert lxc.vmid == 202
+
+    network = collection.resources[1]
+    assert network.resource_type == ResourceType.NETWORK
+    assert network.id == "network/sdn1"
+
+    # Test Collection Iteration (covers __iter__)
+    iterable = list(collection)
+    assert len(iterable) == 2
+    assert iterable[0].vmid == 202
+
+
+def test_deserialize_resource_list_raw():
+    """Directly test the static deserializer list parsing and edge cases."""
+    raw_list = [
+        {
+            "type": "node",
+            "id": "node/1",
+            "node": "1",
+            "status": "online",
+            "cpu": 1,
+            "maxcpu": 1,
+            "mem": 1,
+            "maxmem": 1,
+            "disk": 1,
+            "maxdisk": 1,
+            "uptime": 1,
+        },
+        {"type": "unknown_type_entirely"},  # Handled by case _
+        "not_a_dict_should_skip",  # Handled by isinstance(item, dict) check
+    ]
+
+    parsed = deserialize_resource_list(raw_list)
+    assert len(parsed) == 1
+    assert parsed[0].resource_type == ResourceType.NODE
+
+    # Check invalid master payload entirely
+    assert not deserialize_resource_list(None)
+    assert not deserialize_resource_list({"not": "a list"})
+
+
+def test_cluster_collection_iteration(mock_pve_dual_node_cluster_raw):
+    """Ensure the iteration dunder method behaves correctly."""
+    collection = ClusterResourcesCollection.from_dict(
+        {"resources": mock_pve_dual_node_cluster_raw}
+    )
+
+    # Passing the collection directly to list() calls __iter__ under the hood
+    items = list(collection)
+    assert len(items) == 6
