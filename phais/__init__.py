@@ -243,15 +243,15 @@ class ProxmoxVE:
         """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
         await self.auth.check_and_refresh(method=method)
 
-        cookies = self.auth.get_cookies()
-        cookie_header = "; ".join([f"{k}={v}" for k, v in cookies.items()])
-
-        headers = {
+        headers: dict[str, str] = {
             "Accept": "application/json",
             "Connection": "keep-alive",
-            "Cookie": cookie_header,
             **self.auth.get_headers(),
         }
+
+        # Only attach the Cookie header if cookies are present (e.g., Ticket Auth)
+        if cookies := self.auth.get_cookies():
+            headers["Cookie"] = "; ".join([f"{k}={v}" for k, v in cookies.items()])
 
         request_kwargs: dict[str, Any] = {}
 
@@ -262,12 +262,8 @@ class ProxmoxVE:
                     k: (int(v) if isinstance(v, bool) else str(v))
                     for k, v in query_params.items()
                 }
-        else:
-            if json_data:
-                request_kwargs["json"] = json_data
-
-            if csrf_token := headers.get("CSRFPreventionToken"):
-                headers["CSRFPreventionToken"] = csrf_token
+        elif json_data:
+            request_kwargs["json"] = json_data
 
         url = f"{self.base_url}/{path.lstrip('/')}"
         timeout = aiohttp.ClientTimeout(total=self.timeout)
