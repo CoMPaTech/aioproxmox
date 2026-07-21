@@ -12,6 +12,7 @@ from phais.endpoints import (
     QemuStatusEndpoint,
     TasksEndpoint,
 )
+from phais.exceptions import ProxmoxAPIError, ResourceNotFoundError
 from phais.model.pve import (
     ClusterResourcesCollection,
     ClusterStatusCache,
@@ -103,7 +104,7 @@ async def test_agent_ping():
     mock_client.request.assert_called_with("POST", "nodes/pve-01/qemu/101/agent/ping")
 
     # Simulate failure
-    mock_client.request.side_effect = RuntimeError("Failed")
+    mock_client.request.side_effect = ProxmoxAPIError("status", "message", "endpoint")
     assert await agent.ping() is False
 
 
@@ -132,10 +133,6 @@ async def test_tasks_endpoint_filters():
     mock_client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 5}
     )
-
-    # Test __await__ wrapper
-    tasks_direct = await endpoint
-    assert len(tasks_direct) == 1
 
 
 @pytest.mark.asyncio
@@ -279,7 +276,7 @@ async def test_lxc_current_missing_node_exception():
     client.cluster.resources = AsyncMock()  # Fallback finds nothing
 
     endpoint = LXCStatusEndpoint(client, "pve-01", 999)
-    with pytest.raises(KeyError, match="could not be located anywhere"):
+    with pytest.raises(ResourceNotFoundError, match="could not be located anywhere"):
         await endpoint.current()
 
 
@@ -302,10 +299,6 @@ async def test_tasks_endpoint():
     client.request = AsyncMock(return_value=[{"upid": "UPID:pve-01..."}])
 
     endpoint = TasksEndpoint(client, "pve-01")
-
-    # Await directly tests __await__ proxy
-    res = await endpoint
-    assert len(res) == 1
 
     # Test specific params
     await endpoint.get(typefilter="vzdump", limit=50)

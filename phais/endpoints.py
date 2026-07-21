@@ -3,6 +3,7 @@
 import logging
 from typing import Any, cast
 
+from .exceptions import ProxmoxAPIError, ProxmoxError, ResourceNotFoundError
 from .helpers import pve_find_node_in_cache, pve_reconcile_status_cache
 from .model import PVEPermissions
 from .model.pve import ClusterResourcesCollection, LXCStatus, NodeStatus, QemuStatus
@@ -100,10 +101,6 @@ class QemuAgentEndpoint:
         self.node = node
         self.vmid = vmid
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
-
     async def status(self) -> None:
         """Return generic agent info."""
         raise NotImplementedError
@@ -114,7 +111,7 @@ class QemuAgentEndpoint:
             await self.client.request(
                 "POST", f"nodes/{self.node}/qemu/{self.vmid}/agent/ping"
             )
-        except RuntimeError:
+        except ProxmoxAPIError:
             return False
         return True
 
@@ -135,10 +132,6 @@ class QemuStatusEndpoint:
         self.vmid = vmid
         self.snapshot_name = snapshot_name
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
-
     async def status(self) -> None:
         """Return generic Qemu info."""
         raise NotImplementedError
@@ -156,12 +149,12 @@ class QemuStatusEndpoint:
                 await self.client.cluster.resources()
                 node = pve_find_node_in_cache(self.client.cluster_resources, self.vmid)
             except Exception as err:
-                raise RuntimeError(
+                raise ResourceNotFoundError(
                     f"Failed to fetch resource map while tracking VMID {self.vmid}"
                 ) from err
 
             if not node:
-                raise KeyError(
+                raise ResourceNotFoundError(
                     f"Target QEMU VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
@@ -169,7 +162,7 @@ class QemuStatusEndpoint:
             "GET", f"nodes/{node}/qemu/{self.vmid}/status/current"
         )
         if not isinstance(raw_data, dict):
-            raise TypeError(
+            raise ProxmoxError(
                 f"Expected dict response from qemu VM status, got {type(raw_data)}"
             )
         return QemuStatus.from_dict(raw_data)
@@ -221,10 +214,6 @@ class LXCStatusEndpoint:
         self.vmid = vmid
         self.snapshot_name = snapshot_name
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
-
     async def status(self) -> None:
         """Return generic LXC info."""
         raise NotImplementedError
@@ -242,12 +231,12 @@ class LXCStatusEndpoint:
                 await self.client.cluster.resources()
                 node = pve_find_node_in_cache(self.client.cluster_resources, self.vmid)
             except Exception as err:
-                raise RuntimeError(
+                raise ResourceNotFoundError(
                     f"Failed to fetch resource map while tracking VMID {self.vmid}"
                 ) from err
 
             if not node:
-                raise KeyError(
+                raise ResourceNotFoundError(
                     f"Target container VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
@@ -255,7 +244,7 @@ class LXCStatusEndpoint:
             "GET", f"nodes/{node}/lxc/{self.vmid}/status/current"
         )
         if not isinstance(raw_data, dict):
-            raise TypeError(
+            raise ProxmoxError(
                 f"Expected dict response from LCX status, got {type(raw_data)}"
             )
         return LXCStatus.from_dict(raw_data)
@@ -309,10 +298,6 @@ class TasksEndpoint:
         self.client = client
         self.node = node
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic task history list if used as a direct endpoint."""
-        return self.get().__await__()
-
     async def get(
         self, typefilter: str | None = None, limit: int | None = None
     ) -> list[dict[str, Any]]:
@@ -356,7 +341,7 @@ class NodeEndpoint:
         """Fetch deep operational status for this physical node."""
         raw_data = await self.client.request("GET", f"nodes/{self.node}/status")
         if not isinstance(raw_data, dict):
-            raise TypeError(
+            raise ProxmoxError(
                 f"Expected dict response from node status, got {type(raw_data)}"
             )
         return NodeStatus.from_dict(raw_data)

@@ -8,7 +8,7 @@ import aiohttp
 
 from .const import DEFAULT_PVE_PORT
 from .endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from .exceptions import AuthenticationError
+from .exceptions import ProxmoxAPIError, ProxmoxAuthError
 from .model import PVECapabilities, PVEPermissions
 from .model.pve import ClusterResourcesCollection, ClusterStatusCache
 
@@ -99,7 +99,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
             ssl=self.verify_ssl,
         ) as response:
             if response.status != 200:
-                raise AuthenticationError(
+                raise ProxmoxAuthError(
                     f"Couldn't authenticate user {self.username} to {self.base_url}/access/ticket: Code {response.status}"
                 )
             res_json = await response.json()
@@ -128,7 +128,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                     otp_json = await otpresp.json()
                     otpresp_data = otp_json.get("data")
                 if not otpresp_data:
-                    raise AuthenticationError(
+                    raise ProxmoxAuthError(
                         "Couldn't authenticate user: missing Two Factor Authentication (TFA)"
                     )
 
@@ -225,7 +225,7 @@ class ProxmoxVE:
                 str(user), password, bool(otp), base_url=self.base_url, **auth_kwargs
             )
         else:
-            raise ValueError("No valid authentication credentials were supplied")
+            raise ProxmoxAuthError("No valid authentication credentials were supplied")
 
     async def connect(self) -> ClusterResourcesCollection:
         """Authenticate and gather cluster resources."""
@@ -282,9 +282,7 @@ class ProxmoxVE:
         ) as response:
             if response.status not in (200, 201):
                 text = await response.text()
-                raise RuntimeError(
-                    f"PVE API Error: {method} {path} returned status {response.status}. Body: {text}"
-                )
+                raise ProxmoxAPIError(response.status, text, path)
 
             payload = await response.json()
             data = payload.get("data", {})

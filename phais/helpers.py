@@ -21,8 +21,7 @@ def pve_find_node_in_cache(
     if not cluster_resources:
         return None
     for res in cluster_resources.resources:
-        # Assuming the resource models expose vmid and node properties
-        if hasattr(res, "vmid") and res.vmid == vmid:
+        if isinstance(res, (QemuResource, ContainerResource)) and res.vmid == vmid:
             return str(res.node)
     return None
 
