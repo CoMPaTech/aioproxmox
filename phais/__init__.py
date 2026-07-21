@@ -265,7 +265,7 @@ class ProxmoxVE:
         elif json_data:
             request_kwargs["json"] = json_data
 
-        url = f"{self.base_url}/{path.lstrip('/')}"
+        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
         timeout = aiohttp.ClientTimeout(total=self.timeout)
 
         async with self.auth.session.request(
