@@ -22,3 +22,41 @@ class PVECapabilities:
     def has_node_permission(self, perm: str) -> bool:
         """Helper to quickly check a Node flag (e.g., 'Sys.Console')."""
         return bool(self.nodes.get(perm, 0))
+
+
+@dataclass(slots=True)
+class PVEPermissions:
+    """Strongly-typed lookup mapping paths (vms, storage, nodes) to specific ACL privileges."""
+
+    # Internal structure: dict[path_string, set[privilege_strings]]
+    # Example: {"/vms/101": {"VM.Audit", "VM.PowerMgmt"}}
+    _perm_map: dict[str, set[str]] = field(default_factory=dict)
+
+    @classmethod
+    def from_api_response(cls, data: dict[str, dict[str, int]]) -> PVEPermissions:
+        """Factory to compile the raw access/permissions dict into clean lookups."""
+        compiled: dict[str, set[str]] = {}
+
+        for path, priv_dict in data.items():
+            # Proxmox returns permissions as {"VM.Audit": 1, "VM.PowerMgmt": 1}
+            allowed_privs = {priv for priv, val in priv_dict.items() if val == 1}
+            if allowed_privs:
+                compiled[path] = allowed_privs
+
+        return cls(_perm_map=compiled)
+
+    def has_permission(self, path: str, privilege: str) -> bool:
+        """Check if a specific path has an exact privilege."""
+        return privilege in self._perm_map.get(path, set())
+
+    def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
+        """Helper to check permissions for a specific VM ID."""
+        return self.has_permission(f"/vms/{vmid}", privilege)
+
+    def has_storage_permission(self, storage_id: str, privilege: str) -> bool:
+        """Helper to check permissions for a specific storage pool."""
+        return self.has_permission(f"/storage/{storage_id}", privilege)
+
+    def has_node_permission(self, node: str, privilege: str) -> bool:
+        """Helper to check permissions for a specific cluster node."""
+        return self.has_permission(f"/nodes/{node}", privilege)
