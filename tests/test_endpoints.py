@@ -10,8 +10,8 @@ from phais.endpoints import (
     LXCStatusEndpoint,
     NodeEndpoint,
     QemuStatusEndpoint,
-    TasksEndpoint,
 )
+from phais.exceptions import ProxmoxAPIError, ResourceNotFoundError
 from phais.model.pve import (
     ClusterResourcesCollection,
     ClusterStatusCache,
@@ -31,15 +31,9 @@ async def test_unimplemented_stubs():
     with pytest.raises(NotImplementedError):
         await qemu_endpoint.status.status()
 
-    with pytest.raises(NotImplementedError):
-        qemu_endpoint.status.snapshot_create()
-
     lxc_endpoint = NodeEndpoint(mock_client, "pve-01").lxc(202)
     with pytest.raises(NotImplementedError):
         await lxc_endpoint.status.status()
-
-    with pytest.raises(NotImplementedError):
-        lxc_endpoint.status.snapshot_create()
 
 
 @pytest.mark.asyncio
@@ -103,7 +97,7 @@ async def test_agent_ping():
     mock_client.request.assert_called_with("POST", "nodes/pve-01/qemu/101/agent/ping")
 
     # Simulate failure
-    mock_client.request.side_effect = RuntimeError("Failed")
+    mock_client.request.side_effect = ProxmoxAPIError("status", "message", "endpoint")
     assert await agent.ping() is False
 
 
@@ -125,17 +119,13 @@ async def test_tasks_endpoint_filters():
     mock_client = MagicMock()
     mock_client.request = AsyncMock(return_value=[{"upid": "task1"}])
 
-    endpoint = TasksEndpoint(mock_client, "pve-01")
-    tasks = await endpoint.get(typefilter="vzdump", limit=5)
+    node = NodeEndpoint(mock_client, "pve-01")
+    tasks = await node.tasks(typefilter="vzdump", limit=5)
 
     assert len(tasks) == 1
     mock_client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 5}
     )
-
-    # Test __await__ wrapper
-    tasks_direct = await endpoint
-    assert len(tasks_direct) == 1
 
 
 @pytest.mark.asyncio
@@ -279,7 +269,7 @@ async def test_lxc_current_missing_node_exception():
     client.cluster.resources = AsyncMock()  # Fallback finds nothing
 
     endpoint = LXCStatusEndpoint(client, "pve-01", 999)
-    with pytest.raises(KeyError, match="could not be located anywhere"):
+    with pytest.raises(ResourceNotFoundError, match="could not be located anywhere"):
         await endpoint.current()
 
 
@@ -301,14 +291,10 @@ async def test_tasks_endpoint():
     client = MagicMock()
     client.request = AsyncMock(return_value=[{"upid": "UPID:pve-01..."}])
 
-    endpoint = TasksEndpoint(client, "pve-01")
-
-    # Await directly tests __await__ proxy
-    res = await endpoint
-    assert len(res) == 1
+    node = NodeEndpoint(client, "pve-01")
 
     # Test specific params
-    await endpoint.get(typefilter="vzdump", limit=50)
+    await node.tasks(typefilter="vzdump", limit=50)
     client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 50}
     )
@@ -340,3 +326,50 @@ async def test_node_status_and_storage():
     client.request = AsyncMock(return_value=[{"storage": "local-lvm"}])
     storage = await endpoint.storage()
     assert storage[0]["storage"] == "local-lvm"
+
+
+@pytest.mark.asyncio
+async def test_qemu_snapshot_creation():
+    """Test QEMU snapshot creation with full payload options."""
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value="UPID:pve-01:00001234...")
+
+    endpoint = NodeEndpoint(mock_client, "pve-01").qemu(100)
+    endpoint.status.snapshot_name = "pre-upgrade"
+    endpoint.status.snapshot_description = "Backup before OS update"
+    endpoint.status.snapshot_state = True
+
+    upid = await endpoint.status.snapshot()
+
+    assert upid == "UPID:pve-01:00001234..."
+    mock_client.post.assert_called_once_with(
+        "nodes/pve-01/qemu/100/snapshot",
+        data={
+            "snapname": "pre-upgrade",
+            "vmstate": True,
+            "description": "Backup before OS update",
+        },
+    )
+
+
+@pytest.mark.asyncio
+async def test_lxc_snapshot_creation():
+    """Test LXC snapshot creation without description."""
+    mock_client = MagicMock()
+    mock_client.post = AsyncMock(return_value="UPID:pve-01:00005678...")
+
+    endpoint = NodeEndpoint(mock_client, "pve-01").lxc(202)
+    endpoint.status.snapshot_name = "quick-snap"
+    endpoint.status.snapshot_description = None
+    endpoint.status.snapshot_state = False
+
+    upid = await endpoint.status.snapshot()
+
+    assert upid == "UPID:pve-01:00005678..."
+    mock_client.post.assert_called_once_with(
+        "nodes/pve-01/lxc/202/snapshot",
+        data={
+            "snapname": "quick-snap",
+            "vmstate": False,
+        },
+    )

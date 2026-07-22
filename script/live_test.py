@@ -140,7 +140,7 @@ async def main() -> None:
             _LOGGER.exception("Failed to fetch storage.")
 
         try:
-            backups = await pve.nodes(test_node).tasks.get(typefilter="vzdump", limit=1)
+            backups = await pve.nodes(test_node).tasks(typefilter="vzdump", limit=1)
             call_time("Backups")
             _LOGGER.warning("Successfully retrieved tasks resource")
             _LOGGER.warning(backups)

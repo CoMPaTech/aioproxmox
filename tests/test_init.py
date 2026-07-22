@@ -8,14 +8,14 @@ import pytest
 
 from phais import ProxmoxHTTPApiTokenAuth, ProxmoxHTTPAuth, ProxmoxVE
 from phais.endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from phais.exceptions import AuthenticationError
+from phais.exceptions import ProxmoxAPIError, ProxmoxAuthError
 
 
 @pytest.mark.asyncio
 async def test_proxmox_ve_missing_creds():
     """Test missing credentials."""
     session = MagicMock(spec=aiohttp.ClientSession)
-    with pytest.raises(ValueError, match="No valid authentication credentials"):
+    with pytest.raises(ProxmoxAuthError, match="No valid authentication credentials"):
         ProxmoxVE(session=session, host="127.0.0.1")
 
 
@@ -54,7 +54,7 @@ async def test_request_error_handling():
     )
 
     with pytest.raises(
-        RuntimeError, match="PVE API Error: GET nodes returned status 403"
+        ProxmoxAPIError, match="PVE API Error 403 at nodes: Permission denied"
     ):
         await pve.request("GET", "nodes")
 
@@ -100,7 +100,7 @@ async def test_http_auth_ticket_failure():
         "root@pam", "bad_pass", base_url="https://mock", session=session
     )
 
-    with pytest.raises(AuthenticationError, match="Couldn't authenticate user"):
+    with pytest.raises(ProxmoxAuthError, match="Couldn't authenticate user"):
         await auth.async_init()
 
 
@@ -167,7 +167,7 @@ async def test_http_auth_ticket_tfa_failure():
         "root@pam", "password", otp="bad_otp", base_url="https://mock", session=session
     )
 
-    with pytest.raises(AuthenticationError, match="missing Two Factor Authentication"):
+    with pytest.raises(ProxmoxAuthError, match="missing Two Factor Authentication"):
         await auth.async_init()
 
 

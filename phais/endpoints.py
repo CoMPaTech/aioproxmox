@@ -3,6 +3,7 @@
 import logging
 from typing import Any, cast
 
+from .exceptions import ProxmoxAPIError, ProxmoxError, ResourceNotFoundError
 from .helpers import pve_find_node_in_cache, pve_reconcile_status_cache
 from .model import PVEPermissions
 from .model.pve import ClusterResourcesCollection, LXCStatus, NodeStatus, QemuStatus
@@ -100,10 +101,6 @@ class QemuAgentEndpoint:
         self.node = node
         self.vmid = vmid
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
-
     async def status(self) -> None:
         """Return generic agent info."""
         raise NotImplementedError
@@ -114,7 +111,7 @@ class QemuAgentEndpoint:
             await self.client.request(
                 "POST", f"nodes/{self.node}/qemu/{self.vmid}/agent/ping"
             )
-        except RuntimeError:
+        except ProxmoxAPIError:
             return False
         return True
 
@@ -128,16 +125,16 @@ class QemuStatusEndpoint:
         node: str,
         vmid: int,
         snapshot_name: str | None = None,
+        snapshot_description: str | None = None,
+        snapshot_state: bool = True,
     ) -> None:
         """Endpoint initialisation."""
         self.client = client
         self.node = node
         self.vmid = vmid
         self.snapshot_name = snapshot_name
-
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
+        self.snapshot_description = snapshot_description
+        self.snapshot_state = snapshot_state
 
     async def status(self) -> None:
         """Return generic Qemu info."""
@@ -156,12 +153,12 @@ class QemuStatusEndpoint:
                 await self.client.cluster.resources()
                 node = pve_find_node_in_cache(self.client.cluster_resources, self.vmid)
             except Exception as err:
-                raise RuntimeError(
+                raise ResourceNotFoundError(
                     f"Failed to fetch resource map while tracking VMID {self.vmid}"
                 ) from err
 
             if not node:
-                raise KeyError(
+                raise ResourceNotFoundError(
                     f"Target QEMU VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
@@ -169,20 +166,25 @@ class QemuStatusEndpoint:
             "GET", f"nodes/{node}/qemu/{self.vmid}/status/current"
         )
         if not isinstance(raw_data, dict):
-            raise TypeError(
+            raise ProxmoxError(
                 f"Expected dict response from qemu VM status, got {type(raw_data)}"
             )
         return QemuStatus.from_dict(raw_data)
 
-    def snapshot_create(self) -> PostAction:
+    async def snapshot(self) -> str:
         """Create a new Snapshot for a VM."""
-        raise NotImplementedError
-        # If we only create snapshots we can do it like this, otherwise we'll have to
-        # create it's own proxy
-        # params -> name = self.snapshot_name
-        # raw_data = await self.client.request(
-        #    "POST", f"nodes/{self.node}/qemu/{self.vmid}/snapshot", params=params if params else None,
-        # )
+        payload = {
+            "snapname": self.snapshot_name,
+            "vmstate": int(self.snapshot_state),  # Note, convert bool back to int
+        }
+        if self.snapshot_description:
+            payload["description"] = self.snapshot_description
+
+        return str(
+            await self.client.post(
+                f"nodes/{self.node}/qemu/{self.vmid}/snapshot", data=payload
+            )
+        )
 
     start = qemu_action("start")
     stop = qemu_action("stop")
@@ -214,16 +216,16 @@ class LXCStatusEndpoint:
         node: str,
         vmid: int,
         snapshot_name: str | None = None,
+        snapshot_description: str | None = None,
+        snapshot_state: bool = True,
     ) -> None:
         """Endpoint initialisation."""
         self.client = client
         self.node = node
         self.vmid = vmid
         self.snapshot_name = snapshot_name
-
-    def __await__(self) -> Any:
-        """Allow for awaiting generic status."""
-        return self.status().__await__()
+        self.snapshot_description = snapshot_description
+        self.snapshot_state = snapshot_state
 
     async def status(self) -> None:
         """Return generic LXC info."""
@@ -242,12 +244,12 @@ class LXCStatusEndpoint:
                 await self.client.cluster.resources()
                 node = pve_find_node_in_cache(self.client.cluster_resources, self.vmid)
             except Exception as err:
-                raise RuntimeError(
+                raise ResourceNotFoundError(
                     f"Failed to fetch resource map while tracking VMID {self.vmid}"
                 ) from err
 
             if not node:
-                raise KeyError(
+                raise ResourceNotFoundError(
                     f"Target container VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
@@ -255,20 +257,25 @@ class LXCStatusEndpoint:
             "GET", f"nodes/{node}/lxc/{self.vmid}/status/current"
         )
         if not isinstance(raw_data, dict):
-            raise TypeError(
+            raise ProxmoxError(
                 f"Expected dict response from LCX status, got {type(raw_data)}"
             )
         return LXCStatus.from_dict(raw_data)
 
-    def snapshot_create(self) -> PostAction:
+    async def snapshot(self) -> str:
         """Create a new Snapshot for a VM."""
-        raise NotImplementedError
-        # If we only create snapshots we can do it like this, otherwise we'll have to
-        # create it's own proxy
-        # params -> name = self.snapshot_name
-        # raw_data = await self.client.request(
-        #    "POST", f"nodes/{self.node}/qemu/{self.vmid}/snapshot", params=params if params else None,
-        # )
+        payload = {
+            "snapname": self.snapshot_name,
+            "vmstate": int(self.snapshot_state),  # Note, convert bool back to int
+        }
+        if self.snapshot_description:
+            payload["description"] = self.snapshot_description
+
+        return str(
+            await self.client.post(
+                f"nodes/{self.node}/lxc/{self.vmid}/snapshot", data=payload
+            )
+        )
 
     start = lxc_action("start")
     restart = lxc_action("restart")
@@ -301,19 +308,32 @@ class AccessEndpoint:
         return cast(PVEPermissions, self.client.permissions)
 
 
-class TasksEndpoint:
-    """Auditing background worker actions and task histories on a node."""
+class NodeEndpoint:
+    """Node endpoint."""
 
     def __init__(self, client: Any, node: str) -> None:
-        """Endpoint initialization."""
+        """Endpoint initialisation."""
         self.client = client
         self.node = node
 
-    def __await__(self) -> Any:
-        """Allow for awaiting generic task history list if used as a direct endpoint."""
-        return self.get().__await__()
+    def qemu(self, vmid: int) -> QemuEndpoint:
+        """Map Qemu endpoint."""
+        return QemuEndpoint(self.client, self.node, vmid)
 
-    async def get(
+    def lxc(self, vmid: int) -> LXCEndpoint:
+        """Map LXC endpoint."""
+        return LXCEndpoint(self.client, self.node, vmid)
+
+    async def status(self) -> NodeStatus:
+        """Fetch deep operational status for this physical node."""
+        raw_data = await self.client.request("GET", f"nodes/{self.node}/status")
+        if not isinstance(raw_data, dict):
+            raise ProxmoxError(
+                f"Expected dict response from node status, got {type(raw_data)}"
+            )
+        return NodeStatus.from_dict(raw_data)
+
+    async def tasks(
         self, typefilter: str | None = None, limit: int | None = None
     ) -> list[dict[str, Any]]:
         """Fetch operational history blocks matching specific filters (e.g., vzdump)."""
@@ -332,34 +352,6 @@ class TasksEndpoint:
         return cast(
             list[dict[str, Any]], raw_data if isinstance(raw_data, list) else []
         )
-
-
-class NodeEndpoint:
-    """Node endpoint."""
-
-    def __init__(self, client: Any, node: str) -> None:
-        """Endpoint initialisation."""
-        self.client = client
-        self.node = node
-
-        self.tasks = TasksEndpoint(client, node)
-
-    def qemu(self, vmid: int) -> QemuEndpoint:
-        """Map Qemu endpoint."""
-        return QemuEndpoint(self.client, self.node, vmid)
-
-    def lxc(self, vmid: int) -> LXCEndpoint:
-        """Map LXC endpoint."""
-        return LXCEndpoint(self.client, self.node, vmid)
-
-    async def status(self) -> NodeStatus:
-        """Fetch deep operational status for this physical node."""
-        raw_data = await self.client.request("GET", f"nodes/{self.node}/status")
-        if not isinstance(raw_data, dict):
-            raise TypeError(
-                f"Expected dict response from node status, got {type(raw_data)}"
-            )
-        return NodeStatus.from_dict(raw_data)
 
     async def storage(self) -> list[dict[str, Any]]:
         """Fetch high-level allocations and health for all storages on this node."""
