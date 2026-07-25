@@ -5,10 +5,10 @@ import logging
 import pytest
 
 from phais.model.pve import (
+    ClusterQemuResource,
     ClusterResourcesCollection,
     NodeResource,
-    QemuResource,
-    ResourceStatus,
+    OperationalStatus,
     ResourceType,
     StoragePluginType,
     StorageResource,
@@ -34,7 +34,7 @@ def test_deserialize_pve_cluster_resources(mock_pve_cluster_resources_raw):
 
     # 2. Verify VM Parsing & Delimited Semicolon String-to-List Conversion
     vm = collection.resources[1]
-    assert isinstance(vm, QemuResource)
+    assert isinstance(vm, ClusterQemuResource)
     assert vm.name == "homeassistant-core"
     assert vm.resource_type == ResourceType.QEMU
     assert vm.tags == ["homeautomation", "production", "important"]
@@ -43,7 +43,7 @@ def test_deserialize_pve_cluster_resources(mock_pve_cluster_resources_raw):
     storage = collection.resources[2]
     assert isinstance(storage, StorageResource)
     assert storage.storage == "local-lvm"
-    assert storage.status == ResourceStatus.AVAILABLE
+    assert storage.status == OperationalStatus.AVAILABLE
 
 
 def test_deserialize_resilience_to_unknown_elements(caplog):
@@ -74,9 +74,9 @@ def test_deserialize_resilience_to_unknown_elements(caplog):
     # The unknown collection type string drops out cleanly without crashing the loop
     assert len(collection.resources) == 1
 
-    # The unknown status fallback on the matching VM becomes ResourceStatus.UNKNOWN
+    # The unknown status fallback on the matching VM becomes OperationalStatus.UNKNOWN
     parsed_vm = collection.resources[0]
-    assert parsed_vm.status == ResourceStatus.UNKNOWN
+    assert parsed_vm.status == OperationalStatus.UNKNOWN
     assert "Unknown Proxmox resource status encountered" in caplog.text
 
 

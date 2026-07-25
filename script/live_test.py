@@ -57,43 +57,74 @@ async def main() -> None:
 
         stopped_vm: int | None = None
         started_vm: int | None = None
+        started_lxc: int | None = None
 
-        try:
-            cluster = await pve.cluster.resources()
-            call_time("Cluster Resources")
+        call_time("Cluster Resources")
+        _LOGGER.warning(
+            "Successfully updated %s cluster resources.", len(cluster.resources)
+        )
+        for resource in cluster.resources:
             _LOGGER.warning(
-                "Successfully updated %s cluster resources.", len(cluster.resources)
+                "- %s: %s (%s) ",
+                resource.resource_type,
+                resource.id,
+                resource.status,
             )
-            for resource in cluster.resources:
-                _LOGGER.warning(
-                    "- %s: %s (%s) ",
-                    resource.resource_type,
-                    resource.id,
-                    resource.status,
-                )
-                if not test_node and resource.resource_type == "node":
-                    test_node = resource.id.split("/")[-1]
-                if (
-                    not stopped_vm
-                    and type(resource) is phais.model.pve.QemuResource
-                    and resource.resource_type == phais.model.pve.ResourceType.QEMU
-                    and resource.status == phais.model.pve.ResourceStatus.STOPPED
-                ):
-                    stopped_vm = resource.vmid
-                if (
-                    not started_vm
-                    and type(resource) is phais.model.pve.QemuResource
-                    and resource.resource_type == phais.model.pve.ResourceType.QEMU
-                    and resource.status == phais.model.pve.ResourceStatus.RUNNING
-                ):
-                    started_vm = resource.vmid
-        except Exception:
-            _LOGGER.exception("Failed to fetch cluster resources.")
+            if not test_node and resource.resource_type == "node":
+                test_node = resource.id.split("/")[-1]
+            # Find first stopped QEMU VM
+            if (
+                not stopped_vm
+                and isinstance(resource, phais.model.pve.ClusterQemuResource)
+                and resource.status == phais.model.pve.OperationalStatus.STOPPED
+            ):
+                stopped_vm = resource.vmid
+
+            # Find first running QEMU VM
+            if (
+                not started_vm
+                and isinstance(resource, phais.model.pve.ClusterQemuResource)
+                and resource.status == phais.model.pve.OperationalStatus.RUNNING
+            ):
+                started_vm = resource.vmid
+
+            # Find first running LXC Container
+            if (
+                not started_lxc
+                and isinstance(resource, phais.model.pve.ClusterContainerResource)
+                and resource.status == phais.model.pve.OperationalStatus.RUNNING
+            ):
+                started_lxc = resource.vmid
+
         call_time("Resource printing done")
+        _LOGGER.warning("Using dynamic testing on:")
+        _LOGGER.warning("  Stopped VM  = %s", stopped_vm)
+        _LOGGER.warning("  Started VM  = %s", started_vm)
+        _LOGGER.warning("  Started LXC = %s", started_lxc)
+        call_time("Time")
 
         if not test_node:
             raise ValueError("Test node not found")
 
+        _LOGGER.warning("Fetching Qemu and LXC lists")
+        try:
+            qemu = await pve.nodes(test_node).qemu_all()
+            call_time("Qemu List")
+            _LOGGER.warning("Successfully retrieved Qemu resources")
+            _LOGGER.warning([vm.name for vm in qemu])
+        except Exception:
+            _LOGGER.exception("Failed to fetch Qemu resources.")
+        try:
+            lxc = await pve.nodes(test_node).lxc_all()
+            call_time("LXC List")
+            _LOGGER.warning("Successfully retrieved LXC resources")
+            _LOGGER.warning([container.name for container in lxc])
+        except Exception:
+            _LOGGER.exception("Failed to fetch LXC resources.")
+        call_time("Qemu/LXC listing done")
+
+        _LOGGER.warning("Cached node resource")
+        _LOGGER.warning(pve.status_cache.nodes)
         try:
             node_status = await pve.nodes(test_node).status()
             call_time("Node Status")
@@ -147,18 +178,20 @@ async def main() -> None:
         except Exception:
             _LOGGER.exception("Failed to fetch backup task info.")
 
-        call_time("Starting agent tests")
+        call_time("Time")
         if started_vm:
-            call_time("Alive VM")
+            call_time("Guest Agent running VM start")
             agent_status = await pve.nodes(test_node).qemu(started_vm).agent.ping()
+            call_time("Guest Agent running VM complete")
             _LOGGER.warning("Started VM result: %s", agent_status)
         if stopped_vm:
-            call_time("Stopped VM")
+            call_time("Guest Agent stopped VM start")
             agent_status = await pve.nodes(test_node).qemu(stopped_vm).agent.ping()
+            call_time("Guest Agent stopped VM complete")
             _LOGGER.warning("Stopped VM result: %s", agent_status)
-        call_time("Completed agent tests")
 
-        call_time("Time")
+        if started_vm or stopped_vm:
+            call_time("Time")
 
 
 if __name__ == "__main__":

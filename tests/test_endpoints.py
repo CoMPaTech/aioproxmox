@@ -13,11 +13,11 @@ from phais.endpoints import (
 )
 from phais.exceptions import ProxmoxAPIError, ResourceNotFoundError
 from phais.model.pve import (
+    ClusterQemuResource,
     ClusterResourcesCollection,
     ClusterStatusCache,
-    QemuResource,
+    OperationalStatus,
     QemuStatus,
-    ResourceStatus,
     ResourceType,
 )
 
@@ -217,12 +217,12 @@ async def test_qemu_current_with_fallback():
     async def mock_cluster_resources():
         client.cluster_resources = ClusterResourcesCollection(
             resources=[
-                QemuResource(
+                ClusterQemuResource(
                     id="qemu/101",
                     vmid=101,
                     name="vm",
                     node="pve-02",
-                    status=ResourceStatus.RUNNING,
+                    status=OperationalStatus.RUNNING,
                     template=0,
                     maxcpu=1,
                     maxmem=1,
