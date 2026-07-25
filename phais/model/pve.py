@@ -37,7 +37,7 @@ class ResourceType(StrEnum):
         return cls.UNKNOWN
 
 
-class ResourceStatus(StrEnum):
+class OperationalStatus(StrEnum):
     """Operational status of resources."""
 
     ONLINE = "online"
@@ -49,9 +49,20 @@ class ResourceStatus(StrEnum):
     OK = "ok"
 
     @classmethod
-    def _missing_(cls, value: Any) -> ResourceStatus:
+    def _missing_(cls, value: Any) -> OperationalStatus:
         _LOGGER.warning("Unknown Proxmox resource status encountered: %r", value)
         return cls.UNKNOWN
+
+
+class QmpStatus(StrEnum):
+    """QMP engine status of QEMU."""
+
+    RUNNING = "running"
+    STOPPED = "stopped"
+    FROZEN = "frozen"
+    PAUSED = "paused"
+    PRELAUNCH = "prelaunch"
+    POSTMIGRATE = "postmigrate"
 
 
 class StoragePluginType(StrEnum):
@@ -87,7 +98,7 @@ class NodeResource(PhaisDataClass):
 
     id: str
     node: str
-    status: ResourceStatus
+    status: OperationalStatus
     cpu: float
     maxcpu: int
     mem: int
@@ -165,14 +176,14 @@ class NodeStatus(DataClassDictMixin):
 
 
 @dataclass
-class QemuResource(PhaisDataClass):
+class ClusterQemuResource(PhaisDataClass):
     """Represents a QEMU Virtual Machine on Cluster Level."""
 
     id: str
     vmid: int
     name: str
     node: str
-    status: ResourceStatus
+    status: OperationalStatus
     template: int
     maxcpu: int
     maxmem: int
@@ -193,12 +204,33 @@ class QemuResource(PhaisDataClass):
 
 
 @dataclass
+class QemuResource(DataClassDictMixin):
+    """Represents a QEMU Virtual Machine summary on a specific Node."""
+
+    vmid: int
+    name: str
+    status: OperationalStatus
+    cpus: int
+    cpu: float = 0.0
+    mem: int = 0
+    maxmem: int = 0
+    disk: int = 0
+    maxdisk: int = 0
+    memhost: int = 0
+    netin: int = 0
+    netout: int = 0
+    uptime: int = 0
+    pid: int | None = None
+    template: int = 0
+
+
+@dataclass
 class QemuStatus(DataClassDictMixin):
     """Represents the real-time operational telemetry of a specific QEMU virtual machine."""
 
     vmid: int
-    status: str  # "running", "stopped" -> should we class this?
-    qmpstatus: str  # "running", "stopped", "frozen" -> should we class this?
+    status: OperationalStatus
+    qmpstatus: QmpStatus
     name: str
     cpus: int
     cpu: float
@@ -220,14 +252,14 @@ class QemuStatus(DataClassDictMixin):
 
 
 @dataclass
-class ContainerResource(PhaisDataClass):
+class ClusterContainerResource(PhaisDataClass):
     """Represents an LXC Container on Cluster Level."""
 
     id: str
     vmid: int
     name: str
     node: str
-    status: ResourceStatus
+    status: OperationalStatus
     template: int
     maxcpu: int
     maxmem: int
@@ -245,6 +277,28 @@ class ContainerResource(PhaisDataClass):
     tags: list[str] = field(
         default_factory=list, metadata={"deserialize": deserialize_tags}
     )
+
+
+@dataclass
+class ContainerResource(DataClassDictMixin):
+    """Represents a LXC Container summary on a specific Node."""
+
+    vmid: int
+    name: str
+    status: OperationalStatus
+    cpus: int
+    cpu: float = 0.0
+    mem: int = 0
+    maxmem: int = 0
+    disk: int = 0
+    maxdisk: int = 0
+    netin: int = 0
+    netout: int = 0
+    swap: int = 0
+    maxswap: int = 0
+    uptime: int = 0
+    pid: int | None = None
+    template: int = 0
 
 
 @dataclass
@@ -282,7 +336,7 @@ class StorageResource(PhaisDataClass):
     id: str
     storage: str
     node: str
-    status: ResourceStatus
+    status: OperationalStatus
     plugintype: StoragePluginType
     shared: int
     content: str
@@ -313,9 +367,9 @@ def route_pve_resource(data: Any) -> type:
             case ResourceType.NODE | "node":
                 return NodeResource
             case ResourceType.QEMU | "qemu":
-                return QemuResource
+                return ClusterQemuResource
             case ResourceType.LXC | "lxc":
-                return ContainerResource
+                return ClusterContainerResource
             case ResourceType.STORAGE | "storage":
                 return StorageResource
             case ResourceType.NETWORK | "network":
@@ -324,7 +378,7 @@ def route_pve_resource(data: Any) -> type:
 
 
 ProxmoxResource = Annotated[
-    NodeResource | QemuResource | ContainerResource | StorageResource,
+    NodeResource | ClusterQemuResource | ClusterContainerResource | StorageResource,
     Discriminator(
         variant_tagger_fn=route_pve_resource,
         include_subtypes=True,  # Satisfies the internal Mashumaro safety guardrail
@@ -348,9 +402,9 @@ def deserialize_resource_list(value: Any) -> list[Any]:
                 case "node":
                     parsed_items.append(NodeResource.from_dict(item))
                 case "qemu":
-                    parsed_items.append(QemuResource.from_dict(item))
+                    parsed_items.append(ClusterQemuResource.from_dict(item))
                 case "lxc":
-                    parsed_items.append(ContainerResource.from_dict(item))
+                    parsed_items.append(ClusterContainerResource.from_dict(item))
                 case "storage":
                     parsed_items.append(StorageResource.from_dict(item))
                 case "network":
@@ -369,8 +423,8 @@ class ClusterResourcesCollection(PhaisDataClass):
 
     resources: list[
         NodeResource
-        | QemuResource
-        | ContainerResource
+        | ClusterQemuResource
+        | ClusterContainerResource
         | StorageResource
         | NetworkResource
     ] = field(metadata={"deserialize": deserialize_resource_list})
@@ -387,3 +441,4 @@ class ClusterStatusCache:
     nodes: dict[str, NodeStatus] = field(default_factory=dict)
     qemu: dict[int, QemuStatus] = field(default_factory=dict)
     lxc: dict[int, LXCStatus] = field(default_factory=dict)
+    storage: dict[str, StorageResource] = field(default_factory=dict)

@@ -6,7 +6,14 @@ from typing import Any, cast
 from .exceptions import ProxmoxAPIError, ProxmoxError, ResourceNotFoundError
 from .helpers import pve_find_node_in_cache, pve_reconcile_status_cache
 from .model import PVEPermissions
-from .model.pve import ClusterResourcesCollection, LXCStatus, NodeStatus, QemuStatus
+from .model.pve import (
+    ClusterResourcesCollection,
+    ContainerResource,
+    LXCStatus,
+    NodeStatus,
+    QemuResource,
+    QemuStatus,
+)
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -189,7 +196,7 @@ class QemuStatusEndpoint:
     start = qemu_action("start")
     stop = qemu_action("stop")
     restart = qemu_action("restart")
-    hibernate = qemu_action("hibernate")
+    suspend = qemu_action("suspend")
     resume = qemu_action("resume")
     reset = qemu_action("reset")
     shutdown = qemu_action("shutdown")
@@ -317,12 +324,22 @@ class NodeEndpoint:
         self.node = node
 
     def qemu(self, vmid: int) -> QemuEndpoint:
-        """Map Qemu endpoint."""
+        """Map individual Qemu endpoint."""
         return QemuEndpoint(self.client, self.node, vmid)
 
     def lxc(self, vmid: int) -> LXCEndpoint:
         """Map LXC endpoint."""
         return LXCEndpoint(self.client, self.node, vmid)
+
+    async def qemu_all(self) -> list[QemuResource]:
+        """Fetch all Qemu resources."""
+        raw = await self.client.request("GET", f"nodes/{self.node}/qemu")
+        return [QemuResource.from_dict(item) for item in raw]
+
+    async def lxc_all(self) -> list[ContainerResource]:
+        """Fetch all LXC resources."""
+        raw = await self.client.request("GET", f"nodes/{self.node}/lxc")
+        return [ContainerResource.from_dict(item) for item in raw]
 
     async def status(self) -> NodeStatus:
         """Fetch deep operational status for this physical node."""
