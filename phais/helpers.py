@@ -3,10 +3,10 @@
 import logging
 
 from .model.pve import (
+    ClusterCache,
     ClusterContainerResource,
     ClusterQemuResource,
     ClusterResourcesCollection,
-    ClusterStatusCache,
     NodeResource,
     StorageResource,
 )
@@ -30,47 +30,24 @@ def pve_find_node_in_cache(
     return None
 
 
-def pve_reconcile_status_cache(
+def pve_cluster_cache(
     cluster_resources: ClusterResourcesCollection,
-    status_cache: ClusterStatusCache,
-) -> ClusterStatusCache:
+) -> ClusterCache:
     """Purge stale telemetry models from cache when vanished from cluster resources."""
     if not cluster_resources:
-        return status_cache
+        return ClusterCache()
 
-    active_nodes = set()
-    active_qemu = set()
-    active_lxc = set()
-    active_storage = set()
+    nodes, qemu, lxc, storage = {}, {}, {}, {}
 
     for res in cluster_resources.resources:
         match res:
             case NodeResource():
-                active_nodes.add(res.node)
+                nodes[res.node] = res
             case ClusterQemuResource():
-                active_qemu.add(res.vmid)
+                qemu[res.vmid] = res
             case ClusterContainerResource():
-                active_lxc.add(res.vmid)
+                lxc[res.vmid] = res
             case StorageResource():
-                active_storage.add(f"{res.node}:{res.storage}")
+                storage[f"{res.node}:{res.storage}"] = res
 
-    stale_nodes = set(status_cache.nodes.keys()) - active_nodes
-    for node in stale_nodes:
-        _LOGGER.info("Evicting decommissioned node from cache: %s", node)
-        del status_cache.nodes[node]
-
-    stale_vms = set(status_cache.qemu.keys()) - active_qemu
-    for vmid in stale_vms:
-        _LOGGER.info("Evicting deleted QEMU VMID from cache: %d", vmid)
-        del status_cache.qemu[vmid]
-
-    stale_lxcs = set(status_cache.lxc.keys()) - active_lxc
-    for vmid in stale_lxcs:
-        _LOGGER.info("Evicting deleted LXC ID from cache: %d", vmid)
-        del status_cache.lxc[vmid]
-
-    for key in set(status_cache.storage) - active_storage:
-        _LOGGER.info("Evicting deleted storage from cache: %d", key)
-        del status_cache.storage[key]
-
-    return status_cache
+    return ClusterCache(nodes=nodes, qemu=qemu, lxc=lxc, storage=storage)

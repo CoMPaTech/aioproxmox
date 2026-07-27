@@ -4,7 +4,7 @@ import logging
 from typing import Any, cast
 
 from .exceptions import ProxmoxAPIError, ProxmoxError, ResourceNotFoundError
-from .helpers import pve_find_node_in_cache, pve_reconcile_status_cache
+from .helpers import pve_cluster_cache, pve_find_node_in_cache
 from .model import PVEPermissions
 from .model.pve import (
     ClusterResourcesCollection,
@@ -131,6 +131,7 @@ class QemuStatusEndpoint:
         client: Any,
         node: str,
         vmid: int,
+        *,
         snapshot_name: str | None = None,
         snapshot_description: str | None = None,
         snapshot_state: bool = True,
@@ -222,6 +223,7 @@ class LXCStatusEndpoint:
         client: Any,
         node: str,
         vmid: int,
+        *,
         snapshot_name: str | None = None,
         snapshot_description: str | None = None,
         snapshot_state: bool = True,
@@ -398,9 +400,7 @@ class ClusterEndpoint:
             {"resources": raw_data}
         )
 
-        # Update status_cache for rogue entries
-        self.client.status_cache = pve_reconcile_status_cache(
-            self.client.cluster_resources, self.client.status_cache
-        )
+        # Update cache for rogue entries
+        self.client.cluster_cache = pve_cluster_cache(self.client.cluster_resources)
 
         return cast(ClusterResourcesCollection, self.client.cluster_resources)

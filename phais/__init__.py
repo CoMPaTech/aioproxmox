@@ -10,7 +10,7 @@ from .const import DEFAULT_PVE_PORT
 from .endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
 from .exceptions import ProxmoxAPIError, ProxmoxAuthError
 from .model import PVECapabilities, PVEPermissions
-from .model.pve import ClusterResourcesCollection, ClusterStatusCache
+from .model.pve import ClusterCache, ClusterResourcesCollection
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -183,6 +183,7 @@ class ProxmoxVE:
         self,
         session: aiohttp.ClientSession,
         host: str,
+        *,
         user: str | None = None,
         password: str | None = None,
         otp: str | None = None,
@@ -207,7 +208,7 @@ class ProxmoxVE:
         self.timeout = timeout
         self.permissions = PVEPermissions()
         self.cluster_resources: ClusterResourcesCollection
-        self.status_cache = ClusterStatusCache()
+        self.cluster_cache = ClusterCache()
 
         auth_kwargs: dict[str, Any] = {
             "session": session,

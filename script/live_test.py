@@ -124,7 +124,7 @@ async def main() -> None:
         call_time("Qemu/LXC listing done")
 
         _LOGGER.warning("Cached node resource")
-        _LOGGER.warning(pve.status_cache.nodes)
+        _LOGGER.warning(pve.cluster_cache.nodes)
         try:
             node_status = await pve.nodes(test_node).status()
             call_time("Node Status")
