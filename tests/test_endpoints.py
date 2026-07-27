@@ -13,9 +13,9 @@ from phais.endpoints import (
 )
 from phais.exceptions import ProxmoxAPIError, ResourceNotFoundError
 from phais.model.pve import (
+    ClusterCache,
     ClusterQemuResource,
     ClusterResourcesCollection,
-    ClusterStatusCache,
     OperationalStatus,
     QemuStatus,
     ResourceType,
@@ -41,7 +41,7 @@ async def test_cluster_endpoint_resources(mock_pve_cluster_resources_raw):
     """Test ClusterEndpoint fetches and updates cache properly."""
     mock_client = MagicMock()
     mock_client.request = AsyncMock(return_value=mock_pve_cluster_resources_raw)
-    mock_client.status_cache = ClusterStatusCache()
+    mock_client.cluster_cache = ClusterCache()
 
     endpoint = ClusterEndpoint(mock_client)
     collection = await endpoint.resources()

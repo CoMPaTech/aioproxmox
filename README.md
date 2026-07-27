@@ -23,24 +23,29 @@ PVE calls can be intense, the `live_test.py` script adds basic timing, especiall
 
 ```text
 Marker / Total time / Diff. time / Progress
-Timing /    0.12 ms /    0.12 ms / Init
-Timing /    0.17 ms /    0.01 ms / Setup
-Timing /   61.20 ms /   61.01 ms / Connect
-Timing /   62.82 ms /    1.57 ms / Cluster Resources
-Timing /   63.00 ms /    0.14 ms / Resource printing done
-Timing /   64.72 ms /    1.72 ms / Node Status
-Timing /   70.25 ms /    5.49 ms / VM Status
-Timing /   81.97 ms /   11.69 ms / LXC
-Timing /   82.07 ms /    0.04 ms / Check existing capabilities
-Timing /   82.15 ms /    0.06 ms / Mark time
-Timing /   85.69 ms /    3.51 ms / Permissions fetch
-Timing / 3268.02 ms / 3182.28 ms / Storage
-Timing / 3274.38 ms /    6.29 ms / Backups
-Timing / 3274.50 ms /    0.06 ms / Starting agent tests
-Timing / 3274.52 ms /    0.00 ms / Alive VM
-Timing / 3423.25 ms /  148.70 ms / Stopped VM
-Timing / 3429.48 ms /    6.22 ms / Completed agent tests
-Timing / 3429.51 ms /    0.00 ms / Time
+Timing /    0.15 ms /    0.15 ms / Init
+Timing /    0.20 ms /    0.02 ms / Setup
+Timing /   69.37 ms /   69.15 ms / Connect
+Timing /   69.52 ms /    0.07 ms / Cluster Resources
+Timing /   69.67 ms /    0.14 ms / Resource printing done
+Timing /   69.72 ms /    0.04 ms / Time
+Timing /   80.22 ms /   10.49 ms / Qemu List
+Timing /  101.04 ms /   20.75 ms / LXC List
+Timing /  101.16 ms /    0.03 ms / Qemu/LXC listing done
+Timing /  105.41 ms /    4.24 ms / Node Status
+Timing /  110.88 ms /    5.42 ms / VM Status
+Timing /  126.18 ms /   15.24 ms / LXC
+Timing /  126.33 ms /    0.06 ms / Check existing capabilities
+Timing /  126.39 ms /    0.05 ms / Mark time
+Timing /  130.49 ms /    4.08 ms / Permissions fetch
+Timing / 1784.85 ms / 1654.30 ms / Storage
+Timing / 1793.08 ms /    8.13 ms / Backups
+Timing / 1793.17 ms /    0.04 ms / Time
+Timing / 1793.20 ms /    0.00 ms / Guest Agent running VM start
+Timing / 1944.55 ms /  151.33 ms / Guest Agent running VM complete
+Timing / 1944.75 ms /    0.08 ms / Guest Agent stopped VM start
+Timing / 1950.67 ms /    5.90 ms / Guest Agent stopped VM complete
+Timing / 1950.75 ms /    0.03 ms / Time
 ```
 
 ## Usage

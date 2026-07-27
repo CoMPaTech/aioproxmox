@@ -435,10 +435,10 @@ class ClusterResourcesCollection(PhaisDataClass):
 
 
 @dataclass
-class ClusterStatusCache:
+class ClusterCache:
     """Centralized, indexed state hub storing real-time telemetry metrics."""
 
-    nodes: dict[str, NodeStatus] = field(default_factory=dict)
-    qemu: dict[int, QemuStatus] = field(default_factory=dict)
-    lxc: dict[int, LXCStatus] = field(default_factory=dict)
+    nodes: dict[str, NodeResource] = field(default_factory=dict)
+    qemu: dict[int, ClusterQemuResource] = field(default_factory=dict)
+    lxc: dict[int, ClusterContainerResource] = field(default_factory=dict)
     storage: dict[str, StorageResource] = field(default_factory=dict)
