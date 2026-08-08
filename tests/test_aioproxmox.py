@@ -1,8 +1,8 @@
-"""Proxmox Home Assistant Integration Service."""
+"""Aynschronous Proxmox library tests."""
 
 import logging
 
-from phais.model.pve import OperationalStatus
+from aioproxmox.model.pve import OperationalStatus
 
 
 def test_enum_fallback_mechanism(caplog):

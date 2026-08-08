@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from phais.model.pve import (
+from aioproxmox.model.pve import (
     ClusterQemuResource,
     ClusterResourcesCollection,
     NodeResource,

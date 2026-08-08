@@ -3,10 +3,10 @@ requires = ["setuptools~=80.0"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name            = "phais"
-version         = "0.0.2a5"
+name            = "aioproxmox"
+version         = "0.0.3a0"
 license         = "MIT"
-description     = "Proxmox Home Assistant Integration Service for Home Assistant."
+description     = "Asynchronous Python library for Proxmox products."
 readme          = "README.md"
 keywords        = ["home", "automation", "proxmox", "pve", "proxmoxve", "pdm", "proxmoxdm", "pbs", "proxmoxbs"]
 classifiers     = [
@@ -27,18 +27,18 @@ dependencies    = [
 ]
 
 [project.urls]
-"Source Code" = "https://github.com/compatech/python-phais"
-"Bug Reports" = "https://github.com/compatech/python-phais/issues"
+"Source Code" = "https://github.com/compatech/aioproxmox"
+"Bug Reports" = "https://github.com/compatech/aioproxmox/issues"
 
 
 [tool.setuptools]
 include-package-data = true
 
 [tool.setuptools.package-data]
-"phais" = ["py.typed"]
+"aioproxmox" = ["py.typed"]
 
 [tool.setuptools.packages.find]
-include = ["phais*"]
+include = ["aioproxmox*"]
 
 [tool.pylint.MAIN]
 py-version = "3.14"
@@ -544,7 +544,7 @@ filterwarnings = [
 ]
 
 [tool.coverage.run]
-source = ["phais"]
+source = ["aioproxmox"]
 
 [tool.coverage.report]
 exclude_lines = [
@@ -738,7 +738,7 @@ mark-parentheses = false
 
 [tool.ruff.lint.isort]
 force-sort-within-sections = true
-known-first-party = ["phais"]
+known-first-party = ["aioproxmox"]
 combine-as-imports = true
 split-on-trailing-comma = false
 
@@ -748,7 +748,7 @@ split-on-trailing-comma = false
 "script/*" = ["T20"]
 
 # Temporary
-"phais/**" = ["PTH"]
+"aioproxmox/**" = ["PTH"]
 "tests/**" = ["PTH"]
 
 [tool.ruff.lint.mccabe]

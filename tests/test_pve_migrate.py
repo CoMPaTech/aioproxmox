@@ -2,7 +2,7 @@
 
 import copy
 
-from phais.model.pve import (
+from aioproxmox.model.pve import (
     ClusterContainerResource,
     ClusterQemuResource,
     ClusterResourcesCollection,

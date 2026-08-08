@@ -4,15 +4,15 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from phais.endpoints import (
+from aioproxmox.endpoints import (
     AccessEndpoint,
     ClusterEndpoint,
     LXCStatusEndpoint,
     NodeEndpoint,
     QemuStatusEndpoint,
 )
-from phais.exceptions import ProxmoxAPIError, ResourceNotFoundError
-from phais.model.pve import (
+from aioproxmox.exceptions import ProxmoxAPIError, ResourceNotFoundError
+from aioproxmox.model.pve import (
     ClusterCache,
     ClusterQemuResource,
     ClusterResourcesCollection,
@@ -198,7 +198,9 @@ async def test_lxc_qemu_current_fallback_logic():
     endpoint = NodeEndpoint(mock_client, "unknown").lxc(202)
 
     # We patch the helper so it fails the first time, but succeeds after cluster.resources() is called
-    with patch("phais.endpoints.pve_find_node_in_cache", side_effect=[None, "pve-02"]):
+    with patch(
+        "aioproxmox.endpoints.pve_find_node_in_cache", side_effect=[None, "pve-02"]
+    ):
         status = await endpoint.status.current()
         assert status.vmid == 202
         mock_client.cluster.resources.assert_called_once()

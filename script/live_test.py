@@ -1,5 +1,5 @@
 #!/usr/bin/env python
-"""Live testing for phais."""
+"""Live testing for proxmox."""
 
 import argparse
 import asyncio
@@ -8,7 +8,7 @@ import time
 
 import aiohttp
 
-import phais
+import aioproxmox
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -39,7 +39,7 @@ async def main() -> None:
 
     async with aiohttp.ClientSession() as session:
         call_time("Init")
-        pve = phais.ProxmoxVE(
+        pve = aioproxmox.ProxmoxVE(
             session=session,
             host=args.host,
             user=args.user,
@@ -75,24 +75,24 @@ async def main() -> None:
             # Find first stopped QEMU VM
             if (
                 not stopped_vm
-                and isinstance(resource, phais.model.pve.ClusterQemuResource)
-                and resource.status == phais.model.pve.OperationalStatus.STOPPED
+                and isinstance(resource, aioproxmox.model.pve.ClusterQemuResource)
+                and resource.status == aioproxmox.model.pve.OperationalStatus.STOPPED
             ):
                 stopped_vm = resource.vmid
 
             # Find first running QEMU VM
             if (
                 not started_vm
-                and isinstance(resource, phais.model.pve.ClusterQemuResource)
-                and resource.status == phais.model.pve.OperationalStatus.RUNNING
+                and isinstance(resource, aioproxmox.model.pve.ClusterQemuResource)
+                and resource.status == aioproxmox.model.pve.OperationalStatus.RUNNING
             ):
                 started_vm = resource.vmid
 
             # Find first running LXC Container
             if (
                 not started_lxc
-                and isinstance(resource, phais.model.pve.ClusterContainerResource)
-                and resource.status == phais.model.pve.OperationalStatus.RUNNING
+                and isinstance(resource, aioproxmox.model.pve.ClusterContainerResource)
+                and resource.status == aioproxmox.model.pve.OperationalStatus.RUNNING
             ):
                 started_lxc = resource.vmid
 

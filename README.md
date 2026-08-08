@@ -1,14 +1,10 @@
-# Proxmox Home Assistant Integration Service
+# Asynchronous Python library for Proxmox products
 
 An asynchronous, type-safe Python client tailored for extracting raw performance telemetry out of Proxmox VE clusters, nodes, and guests.
 
-## The Backstory: Why "PHAIS"?
+## Why another Proxmox library
 
-**PHAISE** stands for **Proxmox Home Assistant Integration Service**.
-
-But there is an intentional double meaning here: **it is hopefully just a PHASE.**
-
-This library was built out of necessity because existing ecosystem integrations and underlying client libraries have structural limitations—whether they are synchronous bottlenecks, missing granular unnested endpoint layouts, or lacking strict runtime type enforcement via tools like Mashumaro. PHAIS serves as our high-performance bridge today while we wait for mainstream upstream libraries to catch up, open up, or accept modern async paradigms. Once they do, this phase can comfortably conclude.
+This library was built out of necessity because existing ecosystem integrations and underlying client libraries have structural limitations. Whether they are synchronous bottlenecks, missing granular unnested endpoint layouts, or lacking strict runtime type enforcement. This library serves as our high-performance bridge today while we wait for any other mainstream library to catch up, open up, or accept modern async paradigms. Once they do, this phase can comfortably conclude.
 
 ## Features
 
@@ -52,17 +48,17 @@ Timing / 1950.75 ms /    0.03 ms / Time
 
 The library provides a modern, fluent interface built on asyncio and aiohttp, designed to mirror the structure of the Proxmox VE API while maintaining strict type safety via dataclasses.
 
-Instead of passing endpoints via string formatting or multi-level item lookups, phais exposes clean, chainable endpoint paths. All data responses are fully validated dataclass objects rather than raw nested dictionaries.
+Instead of passing endpoints via string formatting or multi-level item lookups, aioproxmox exposes clean, chainable endpoint paths. All data responses are fully validated dataclass objects rather than raw nested dictionaries.
 
 ```python
 import asyncio
 import aiohttp
-import phais
+import aioproxmox
 
 async def main():
     async with aiohttp.ClientSession() as session:
         # Initialize the type-safe client backend
-        pve = phais.ProxmoxVE(
+        pve = aioproxmox.ProxmoxVE(
             session=session,
             host="192.168.1.100",
             user="root@pam",
@@ -92,7 +88,7 @@ if __name__ == "__main__":
 
 ### Contrast from Proxmoxer
 
-| Feature | `proxmoxer` (Generic String Wrapper) | `phais` (Type-Safe Telemetry Client) |
+| Feature | `proxmoxer` (Generic String Wrapper) | `aioproxmox` (Type-Safe Telemetry Client) |
 | :--- | :--- | :--- |
 | **I/O Strategy** | Synchronous (blocks the event loop) | Native Asynchronous (`aiohttp`) |
 | **Path Navigation** | Verbatim endpoint strings / properties | Fluid, chainable endpoint paths |
