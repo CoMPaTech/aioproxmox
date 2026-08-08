@@ -1,7 +1,7 @@
 """Tests for Proxmox helpers."""
 
-from phais.helpers import pve_cluster_cache, pve_find_node_in_cache
-from phais.model.pve import ClusterCache, ClusterResourcesCollection
+from aioproxmox.helpers import pve_cluster_cache, pve_find_node_in_cache
+from aioproxmox.model.pve import ClusterCache, ClusterResourcesCollection
 
 
 def test_pve_find_node_in_cache(mock_pve_dual_node_cluster_raw):

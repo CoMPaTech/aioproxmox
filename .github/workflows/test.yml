@@ -45,14 +45,14 @@ jobs:
       - name: Ruff (with fix)
         run: |
           . venv/bin/activate
-          ruff check phais/ tests/
+          ruff check aioproxmox/ tests/
       - name: If needed, commit ruff changes to the pull request
         if: failure()
         run: |
           . venv/bin/activate
-          ruff format phais/ tests/
+          ruff format aioproxmox/ tests/
           git config --global user.name 'autoruff'
-          git config --global user.email 'phais@users.noreply.github.com'
+          git config --global user.email 'aioproxmox@users.noreply.github.com'
           git remote set-url origin https://x-access-token:${{ secrets.PAT_CT }}@github.com/$GITHUB_REPOSITORY
           git checkout $GITHUB_HEAD_REF
           git commit -am "fixup: ${GITHUB_REF##*/} Python code fixed using ruff"
@@ -107,7 +107,7 @@ jobs:
       - name: Run all tests
         run: |
           . venv/bin/activate
-          pytest --log-level info tests/ --cov='phais/'
+          pytest --log-level info tests/ --cov='aioproxmox/'
       - name: Upload coverage artifact
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:
@@ -141,7 +141,7 @@ jobs:
         run: |
           . venv/bin/activate
           pip list | grep -i mypy
-          mypy phais/
+          mypy aioproxmox/
 
   coverage:
     name: Process test coverage
@@ -179,7 +179,7 @@ jobs:
         uses: codecov/codecov-action@fb8b3582c8e4def4969c97caa2f19720cb33a72f
         env:
           CODECOV_TOKEN: ${{ secrets.CODECOV_TOKEN }}
-          slug: CoMPaTech/python-phais
+          slug: CoMPaTech/aioproxmox
 
   test-publishing:
     name: Build and publish Python 🐍 distributions 📦 to TestPyPI
@@ -256,4 +256,4 @@ jobs:
         run: |
           . venv/bin/activate
           echo "Showing complexity higher or equal to 'C'"
-          radon cc phais/ tests/ -s -nc --no-assert
+          radon cc aioproxmox/ tests/ -s -nc --no-assert

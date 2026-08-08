@@ -1,4 +1,4 @@
-"""Proxmox Virtualisation Engine (proxmoxve or pve) Models."""
+"""aioproxmox models for Proxmox Virtualisation Engine."""
 
 from dataclasses import dataclass, field
 from enum import StrEnum
@@ -12,8 +12,8 @@ from mashumaro.types import Discriminator
 _LOGGER = logging.getLogger(__name__)
 
 
-class PhaisDataClass(DataClassDictMixin):
-    """Base phais class."""
+class ProxmoxDataClass(DataClassDictMixin):
+    """Base aioproxmox class."""
 
     class Config(BaseConfig):
         """DataClass configuration."""
@@ -93,7 +93,7 @@ def deserialize_tags(value: Any) -> list[str]:
 
 
 @dataclass
-class NodeResource(PhaisDataClass):
+class NodeResource(ProxmoxDataClass):
     """Represents a physical Proxmox Node on Cluster Level."""
 
     id: str
@@ -176,7 +176,7 @@ class NodeStatus(DataClassDictMixin):
 
 
 @dataclass
-class ClusterQemuResource(PhaisDataClass):
+class ClusterQemuResource(ProxmoxDataClass):
     """Represents a QEMU Virtual Machine on Cluster Level."""
 
     id: str
@@ -252,7 +252,7 @@ class QemuStatus(DataClassDictMixin):
 
 
 @dataclass
-class ClusterContainerResource(PhaisDataClass):
+class ClusterContainerResource(ProxmoxDataClass):
     """Represents an LXC Container on Cluster Level."""
 
     id: str
@@ -330,7 +330,7 @@ class LXCStatus(DataClassDictMixin):
 
 
 @dataclass
-class StorageResource(PhaisDataClass):
+class StorageResource(ProxmoxDataClass):
     """Represents a defined Cluster or Node Storage pool."""
 
     id: str
@@ -346,7 +346,7 @@ class StorageResource(PhaisDataClass):
 
 
 @dataclass
-class NetworkResource(PhaisDataClass):
+class NetworkResource(ProxmoxDataClass):
     """Represents a SDN or physical cluster network interface definition."""
 
     id: str
@@ -418,7 +418,7 @@ def deserialize_resource_list(value: Any) -> list[Any]:
 
 
 @dataclass
-class ClusterResourcesCollection(PhaisDataClass):
+class ClusterResourcesCollection(ProxmoxDataClass):
     """Container mapping to deserialize raw /cluster/resources payloads securely."""
 
     resources: list[

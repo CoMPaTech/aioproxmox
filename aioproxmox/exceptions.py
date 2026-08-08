@@ -1,8 +1,8 @@
-"""Exceptions for phais."""
+"""Exceptions for aioproxmox."""
 
 
 class ProxmoxError(Exception):
-    """Base exception for all PHAIS client errors."""
+    """Base exception for all aioproxmox client errors."""
 
 
 class ProxmoxAuthError(ProxmoxError):

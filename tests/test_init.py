@@ -6,9 +6,9 @@ from unittest.mock import AsyncMock, MagicMock
 import aiohttp
 import pytest
 
-from phais import ProxmoxHTTPApiTokenAuth, ProxmoxHTTPAuth, ProxmoxVE
-from phais.endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from phais.exceptions import ProxmoxAPIError, ProxmoxAuthError
+from aioproxmox import ProxmoxHTTPApiTokenAuth, ProxmoxHTTPAuth, ProxmoxVE
+from aioproxmox.endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
+from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
 
 
 @pytest.mark.asyncio

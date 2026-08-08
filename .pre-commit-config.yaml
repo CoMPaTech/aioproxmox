@@ -4,7 +4,7 @@ default_language_version:
 repos:
   # Run manually in CI skipping the branch checks
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.16.0
+    rev: v0.16.2
     hooks:
       - id: ruff
         name: "Ruff check"
@@ -48,7 +48,7 @@ repos:
           - --quiet
           - --format=custom
           - --configfile=tests/bandit.yaml
-        files: ^(phais|tests|script)/.+\.py$
+        files: ^(aioproxmox|tests|script)/.+\.py$
   - repo: https://github.com/adrienverge/yamllint.git
     rev: v1.38.0
     hooks:
@@ -74,7 +74,7 @@ repos:
           - --py39-plus
           - --force
           - --keep-updates
-        files: ^(phais|tests|script)/.+\.py$
+        files: ^(aioproxmox|tests|script)/.+\.py$
   - repo: https://github.com/jackdewinter/pymarkdown
     rev: v0.9.39
     hooks:
@@ -84,21 +84,21 @@ repos:
     hooks:
       - id: pytest
         name: "Testing using pytest"
-        entry: script/run-in-env.sh pytest --log-level info tests/ --cov='phais/'
+        entry: script/run-in-env.sh pytest --log-level info tests/ --cov='aioproxmox/'
         language: script
         types: [python]
         pass_filenames: false
-        files: ^(phais|tests|script)/.+\.py$
+        files: ^(aioproxmox|tests|script)/.+\.py$
       - id: pylint
         name: "Linting with pylint"
         entry: script/run-in-env.sh pylint -j 0
         language: script
         types: [python]
-        files: ^(phais|tests|script)/.+\.py$
+        files: ^(aioproxmox|tests|script)/.+\.py$
       - id: mypy
         name: "Typing check using mypy"
         entry: script/run-in-env.sh mypy
         language: script
         require_serial: true
         types_or: [python, pyi]
-        files: ^(phais|tests|script)/.+\.(py|pyi)$
+        files: ^(aioproxmox|tests|script)/.+\.(py|pyi)$

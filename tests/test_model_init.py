@@ -1,6 +1,6 @@
 """Tests for Proxmox models."""
 
-from phais.model import PVECapabilities, PVEPermissions
+from aioproxmox.model import PVECapabilities, PVEPermissions
 
 
 def test_pve_capabilities():
