@@ -11,8 +11,12 @@ from .model.pve import (
     ContainerResource,
     LXCStatus,
     NodeStatus,
+    NodeTask,
+    NodeTasks,
     QemuResource,
     QemuStatus,
+    StorageResource,
+    StorageResources,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -170,14 +174,14 @@ class QemuStatusEndpoint:
                     f"Target QEMU VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
-        raw_data = await self.client.request(
+        raw = await self.client.request(
             "GET", f"nodes/{node}/qemu/{self.vmid}/status/current"
         )
-        if not isinstance(raw_data, dict):
+        if not isinstance(raw, dict):
             raise ProxmoxError(
-                f"Expected dict response from qemu VM status, got {type(raw_data)}"
+                f"Expected dict response from qemu VM status, got {type(raw)}"
             )
-        return QemuStatus.from_dict(raw_data)
+        return QemuStatus.from_dict(raw)
 
     async def snapshot(self) -> str:
         """Create a new Snapshot for a VM."""
@@ -262,14 +266,14 @@ class LXCStatusEndpoint:
                     f"Target container VMID {self.vmid} could not be located anywhere in the cluster."
                 )
 
-        raw_data = await self.client.request(
+        raw = await self.client.request(
             "GET", f"nodes/{node}/lxc/{self.vmid}/status/current"
         )
-        if not isinstance(raw_data, dict):
+        if not isinstance(raw, dict):
             raise ProxmoxError(
-                f"Expected dict response from LCX status, got {type(raw_data)}"
+                f"Expected dict response from LCX status, got {type(raw)}"
             )
-        return LXCStatus.from_dict(raw_data)
+        return LXCStatus.from_dict(raw)
 
     async def snapshot(self) -> str:
         """Create a new Snapshot for a VM."""
@@ -311,8 +315,8 @@ class AccessEndpoint:
 
     async def permissions(self) -> PVEPermissions:
         """Fetch the full, granular ACL permissions map for the active session."""
-        raw_data = await self.client.request("GET", "access/permissions")
-        self.client.permissions = PVEPermissions.from_api_response(raw_data)
+        raw = await self.client.request("GET", "access/permissions")
+        self.client.permissions = PVEPermissions.from_api_response(raw)
 
         return cast(PVEPermissions, self.client.permissions)
 
@@ -345,16 +349,16 @@ class NodeEndpoint:
 
     async def status(self) -> NodeStatus:
         """Fetch deep operational status for this physical node."""
-        raw_data = await self.client.request("GET", f"nodes/{self.node}/status")
-        if not isinstance(raw_data, dict):
+        raw = await self.client.request("GET", f"nodes/{self.node}/status")
+        if not isinstance(raw, dict):
             raise ProxmoxError(
-                f"Expected dict response from node status, got {type(raw_data)}"
+                f"Expected dict response from node status, got {type(raw)}"
             )
-        return NodeStatus.from_dict(raw_data)
+        return NodeStatus.from_dict(raw)
 
     async def tasks(
         self, typefilter: str | None = None, limit: int | None = None
-    ) -> list[dict[str, Any]]:
+    ) -> NodeTasks:
         """Fetch operational history blocks matching specific filters (e.g., vzdump)."""
         params: dict[str, Any] = {}
         if typefilter:
@@ -363,21 +367,17 @@ class NodeEndpoint:
             params["limit"] = limit
 
         # The Proxmox API handles query constraints cleanly via standard payload mappings
-        raw_data = await self.client.request(
+        raw = await self.client.request(
             "GET",
             f"nodes/{self.node}/tasks",
             params=params or None,
         )
-        return cast(
-            list[dict[str, Any]], raw_data if isinstance(raw_data, list) else []
-        )
+        return NodeTasks(tasks=NodeTask.list_from_api(raw))
 
-    async def storage(self) -> list[dict[str, Any]]:
+    async def storage(self) -> StorageResources:
         """Fetch high-level allocations and health for all storages on this node."""
-        raw_data = await self.client.request("GET", f"nodes/{self.node}/storage")
-        return cast(
-            list[dict[str, Any]], raw_data if isinstance(raw_data, list) else []
-        )
+        raw = await self.client.request("GET", f"nodes/{self.node}/storage")
+        return StorageResources(storages=StorageResource.list_from_api(raw))
 
     reboot = node_action("reboot")
     shutdown = node_action("shutdown")
@@ -395,9 +395,9 @@ class ClusterEndpoint:
 
     async def resources(self) -> ClusterResourcesCollection:
         """A direct, optimized call returning the complete cluster resources block."""
-        raw_data = await self.client.request("GET", "cluster/resources")
+        raw = await self.client.request("GET", "cluster/resources")
         self.client.cluster_resources = ClusterResourcesCollection.from_dict(
-            {"resources": raw_data}
+            {"resources": raw}
         )
 
         # Update cache for rogue entries

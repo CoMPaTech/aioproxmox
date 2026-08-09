@@ -122,7 +122,7 @@ async def test_tasks_endpoint_filters():
     node = NodeEndpoint(mock_client, "pve-01")
     tasks = await node.tasks(typefilter="vzdump", limit=5)
 
-    assert len(tasks) == 1
+    assert len(tasks.tasks) == 1
     mock_client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 5}
     )
@@ -160,7 +160,7 @@ async def test_node_endpoint_status_and_storage():
     assert status.uptime == 100
 
     storage = await endpoint.storage()
-    assert storage[0]["storage"] == "local-lvm"
+    assert storage.storages[0].storage == "local-lvm"
 
 
 @pytest.mark.asyncio
@@ -327,7 +327,7 @@ async def test_node_status_and_storage():
     # Mock Storage payload
     client.request = AsyncMock(return_value=[{"storage": "local-lvm"}])
     storage = await endpoint.storage()
-    assert storage[0]["storage"] == "local-lvm"
+    assert storage.storages[0].storage == "local-lvm"
 
 
 @pytest.mark.asyncio
