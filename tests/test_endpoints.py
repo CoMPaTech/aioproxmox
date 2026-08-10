@@ -37,16 +37,16 @@ async def test_unimplemented_stubs():
 
 
 @pytest.mark.asyncio
-async def test_cluster_endpoint_resources(mock_pve_cluster_resources_raw):
+async def test_cluster_endpoint_resources(mock_cluster_resources):
     """Test ClusterEndpoint fetches and updates cache properly."""
     mock_client = MagicMock()
-    mock_client.request = AsyncMock(return_value=mock_pve_cluster_resources_raw)
+    mock_client.request = AsyncMock(return_value=mock_cluster_resources)
     mock_client.cluster_cache = ClusterCache()
 
     endpoint = ClusterEndpoint(mock_client)
     collection = await endpoint.resources()
 
-    assert len(collection.resources) == 3
+    assert len(collection.resources) == 12
     mock_client.request.assert_called_with("GET", "cluster/resources")
 
 
@@ -114,53 +114,42 @@ async def test_access_endpoint_permissions():
 
 
 @pytest.mark.asyncio
-async def test_tasks_endpoint_filters():
-    """Test task history with filters and await dunder."""
+async def test_tasks_endpoint_filters(mock_cluster_backup_tasks):
+    """Test ClusterEndpoint fetches and updates cache properly."""
     mock_client = MagicMock()
-    mock_client.request = AsyncMock(return_value=[{"upid": "task1"}])
+    mock_client.request = AsyncMock(return_value=mock_cluster_backup_tasks)
 
     node = NodeEndpoint(mock_client, "pve-01")
     tasks = await node.tasks(typefilter="vzdump", limit=5)
 
-    assert len(tasks) == 1
+    assert len(tasks.tasks) == 5
     mock_client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 5}
     )
 
 
 @pytest.mark.asyncio
-async def test_node_endpoint_status_and_storage():
-    """Test node-level fetchers."""
+async def test_node_endpoint_status(mock_cluster_node_status):
+    """Test node-level status fetchers."""
     mock_client = MagicMock()
-    mock_client.request = AsyncMock(
-        side_effect=[
-            {
-                "uptime": 100,
-                "cpu": 0.5,
-                "idle": 0,
-                "memory": {"total": 1, "used": 1, "free": 0},
-                "swap": {"total": 1, "free": 1, "used": 0},
-                "rootfs": {"total": 1, "used": 1, "free": 0},
-                "cpuinfo": {
-                    "cpus": 1,
-                    "cores": 1,
-                    "sockets": 1,
-                    "model": "test",
-                    "vendor": "test",
-                },
-                "pveversion": "8.0",
-            },
-            [{"storage": "local-lvm", "content": "images"}],
-        ]
-    )
+    mock_client.request = AsyncMock(return_value=mock_cluster_node_status)
 
     endpoint = NodeEndpoint(mock_client, "pve-01")
 
     status = await endpoint.status()
-    assert status.uptime == 100
+    assert status.uptime == 86400
+
+
+@pytest.mark.asyncio
+async def test_node_endpoint_storage(mock_cluster_node_storage):
+    """Test node-level storage fetchers."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(return_value=mock_cluster_node_storage)
+
+    endpoint = NodeEndpoint(mock_client, "pve-01")
 
     storage = await endpoint.storage()
-    assert storage[0]["storage"] == "local-lvm"
+    assert storage.storages[0].storage == "local"
 
 
 @pytest.mark.asyncio
@@ -288,10 +277,10 @@ async def test_access_permissions():
 
 
 @pytest.mark.asyncio
-async def test_tasks_endpoint():
+async def test_tasks_endpoint(mock_cluster_backup_tasks):
     """Test task history retrieval with parameters."""
     client = MagicMock()
-    client.request = AsyncMock(return_value=[{"upid": "UPID:pve-01..."}])
+    client.request = AsyncMock(return_value=mock_cluster_backup_tasks)
 
     node = NodeEndpoint(client, "pve-01")
 
@@ -300,34 +289,6 @@ async def test_tasks_endpoint():
     client.request.assert_called_with(
         "GET", "nodes/pve-01/tasks", params={"typefilter": "vzdump", "limit": 50}
     )
-
-
-@pytest.mark.asyncio
-async def test_node_status_and_storage():
-    """Test Node status and storage retrieval."""
-    client = MagicMock()
-    endpoint = NodeEndpoint(client, "pve-01")
-    client.request = AsyncMock()
-
-    # Mock Node Status payload
-    client.request.return_value = {
-        "uptime": 100,
-        "cpu": 0.1,
-        "idle": 90,
-        "memory": {"total": 1, "used": 1, "free": 1},
-        "swap": {"total": 1, "used": 1, "free": 1},
-        "rootfs": {"total": 1, "used": 1, "free": 1},
-        "cpuinfo": {"cpus": 1, "cores": 1, "sockets": 1, "model": "a", "vendor": "b"},
-        "pveversion": "8.0",
-    }
-
-    status = await endpoint.status()
-    assert status.uptime == 100
-
-    # Mock Storage payload
-    client.request = AsyncMock(return_value=[{"storage": "local-lvm"}])
-    storage = await endpoint.storage()
-    assert storage[0]["storage"] == "local-lvm"
 
 
 @pytest.mark.asyncio

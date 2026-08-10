@@ -5,10 +5,10 @@ import logging
 from .model.pve import (
     ClusterCache,
     ClusterContainerResource,
+    ClusterNodeResource,
     ClusterQemuResource,
     ClusterResourcesCollection,
-    NodeResource,
-    StorageResource,
+    ClusterStorageResource,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -41,13 +41,13 @@ def pve_cluster_cache(
 
     for res in cluster_resources.resources:
         match res:
-            case NodeResource():
+            case ClusterNodeResource():
                 nodes[res.node] = res
             case ClusterQemuResource():
                 qemu[res.vmid] = res
             case ClusterContainerResource():
                 lxc[res.vmid] = res
-            case StorageResource():
+            case ClusterStorageResource():
                 storage[f"{res.node}:{res.storage}"] = res
 
     return ClusterCache(nodes=nodes, qemu=qemu, lxc=lxc, storage=storage)

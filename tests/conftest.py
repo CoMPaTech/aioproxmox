@@ -1,56 +1,45 @@
 """Testing."""
 
+import json
+from pathlib import Path
+from typing import Any
+
 import pytest
+
+USERDATA = Path(__file__).parent.parent / "userdata"
+
+
+def mock_pve_fixture(
+    file: str = "single_924_cluster_resources.json",
+) -> Any:
+    """Represents raw data payload from a single-node Proxmox cluster."""
+    userdata_file = USERDATA / file
+    raw = json.loads(userdata_file.read_text(encoding="utf-8"))
+    return raw.get("data", {})
 
 
 @pytest.fixture
-def mock_pve_cluster_resources_raw() -> list[dict]:
-    """Represents raw data payload from a single-node Proxmox cluster."""
-    return [
-        {
-            "id": "node/pve-01",
-            "node": "pve-01",
-            "type": "node",
-            "status": "online",
-            "cpu": 0.042,
-            "maxcpu": 16,
-            "mem": 34359738368,
-            "maxmem": 68719476736,
-            "disk": 52428800000,
-            "maxdisk": 100000000000,
-            "uptime": 86400,
-            "cgroup-mode": 2,
-            "level": "administrator",
-        },
-        {
-            "id": "qemu/101",
-            "vmid": 101,
-            "name": "homeassistant-core",
-            "node": "pve-01",
-            "type": "qemu",
-            "status": "running",
-            "template": 0,
-            "maxcpu": 4,
-            "maxmem": 8589934592,
-            "maxdisk": 34359738368,
-            "cpu": 0.12,
-            "mem": 4294967296,
-            "uptime": 43200,
-            "tags": "homeautomation;production;important",
-        },
-        {
-            "id": "storage/pve-01/local-lvm",
-            "storage": "local-lvm",
-            "node": "pve-01",
-            "type": "storage",
-            "status": "available",
-            "plugintype": "lvmthin",
-            "shared": 0,
-            "content": "rootdir,images",
-            "disk": 214748364800,
-            "maxdisk": 500000000000,
-        },
-    ]
+def mock_cluster_resources() -> list[dict]:
+    """Return fixture cluster resources."""
+    return mock_pve_fixture()
+
+
+@pytest.fixture
+def mock_cluster_backup_tasks() -> list[dict]:
+    """Return fixture cluster backup tasks."""
+    return mock_pve_fixture("single_924_cluster_tasks_vzdump.json")
+
+
+@pytest.fixture
+def mock_cluster_node_status() -> dict:
+    """Return fixture cluster node status."""
+    return mock_pve_fixture("single_924_cluster_node_status.json")
+
+
+@pytest.fixture
+def mock_cluster_node_storage() -> list[dict]:
+    """Return fixture cluster node storage."""
+    return mock_pve_fixture("single_924_cluster_node_storage.json")
 
 
 @pytest.fixture
