@@ -441,7 +441,8 @@ ProxmoxResource = Annotated[
     ClusterNodeResource
     | ClusterQemuResource
     | ClusterContainerResource
-    | ClusterStorageResource,
+    | ClusterStorageResource
+    | ClusterNetworkResource,
     Discriminator(
         variant_tagger_fn=route_pve_resource,
         include_subtypes=True,  # Satisfies the internal Mashumaro safety guardrail

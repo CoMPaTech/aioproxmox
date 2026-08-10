@@ -37,7 +37,7 @@ def mock_cluster_node_status() -> dict:
 
 
 @pytest.fixture
-def mock_cluster_node_storage() -> dict:
+def mock_cluster_node_storage() -> list[dict]:
     """Return fixture cluster node storage."""
     return mock_pve_fixture("single_924_cluster_node_storage.json")
 
