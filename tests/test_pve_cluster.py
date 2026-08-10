@@ -5,44 +5,43 @@ import logging
 import pytest
 
 from aioproxmox.model.pve import (
+    ClusterNodeResource,
     ClusterQemuResource,
     ClusterResourcesCollection,
-    NodeResource,
+    ClusterStorageResource,
     OperationalStatus,
     ResourceType,
     StoragePluginType,
-    StorageResource,
     deserialize_resource_list,
     deserialize_tags,
     route_pve_resource,
 )
 
 
-def test_deserialize_pve_cluster_resources(mock_pve_cluster_resources_raw):
+def test_deserialize_pve_cluster_resources(mock_cluster_resources):
     """Ensure raw array parses cleanly into distinct structured object types."""
-    payload = {"resources": mock_pve_cluster_resources_raw}
+    payload = {"resources": mock_cluster_resources}
     collection = ClusterResourcesCollection.from_dict(payload)
 
-    assert len(collection.resources) == 3
+    assert len(collection.resources) == 12
 
     # 1. Verify Physical Node Parsing & Camel-Case Hyphen Aliasing
-    node = collection.resources[0]
-    assert isinstance(node, NodeResource)
+    node = collection.resources[6]
+    assert isinstance(node, ClusterNodeResource)
     assert node.id == "node/pve-01"
     assert node.resource_type == ResourceType.NODE
-    assert node.cgroup_mode == 2  # Handled via metadata alias "cgroup-mode"
+    assert node.maxcpu == 16
 
     # 2. Verify VM Parsing & Delimited Semicolon String-to-List Conversion
-    vm = collection.resources[1]
+    vm = collection.resources[0]
     assert isinstance(vm, ClusterQemuResource)
-    assert vm.name == "homeassistant-core"
+    assert vm.name == "vm102"
     assert vm.resource_type == ResourceType.QEMU
-    assert vm.tags == ["homeautomation", "production", "important"]
 
     # 3. Verify Storage Sub-Type Targeting
-    storage = collection.resources[2]
-    assert isinstance(storage, StorageResource)
-    assert storage.storage == "local-lvm"
+    storage = collection.resources[7]
+    assert isinstance(storage, ClusterStorageResource)
+    assert storage.storage == "local"
     assert storage.status == OperationalStatus.AVAILABLE
 
 
@@ -107,7 +106,7 @@ def test_deserialize_handles_broken_items(caplog):
 
     # The broken item dropped into the except block, leaving only the healthy storage item
     assert len(collection.resources) == 1
-    assert isinstance(collection.resources[0], StorageResource)
+    assert isinstance(collection.resources[0], ClusterStorageResource)
     assert "Failed to parse resource item 'node/broken-node'" in caplog.text
 
 

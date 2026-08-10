@@ -11,12 +11,12 @@ from .model.pve import (
     ContainerResource,
     LXCStatus,
     NodeStatus,
+    NodeStorageResource,
+    NodeStorageResources,
     NodeTask,
     NodeTasks,
     QemuResource,
     QemuStatus,
-    StorageResource,
-    StorageResources,
 )
 
 _LOGGER = logging.getLogger(__name__)
@@ -350,10 +350,6 @@ class NodeEndpoint:
     async def status(self) -> NodeStatus:
         """Fetch deep operational status for this physical node."""
         raw = await self.client.request("GET", f"nodes/{self.node}/status")
-        if not isinstance(raw, dict):
-            raise ProxmoxError(
-                f"Expected dict response from node status, got {type(raw)}"
-            )
         return NodeStatus.from_dict(raw)
 
     async def tasks(
@@ -374,10 +370,10 @@ class NodeEndpoint:
         )
         return NodeTasks(tasks=NodeTask.list_from_api(raw))
 
-    async def storage(self) -> StorageResources:
+    async def storage(self) -> NodeStorageResources:
         """Fetch high-level allocations and health for all storages on this node."""
         raw = await self.client.request("GET", f"nodes/{self.node}/storage")
-        return StorageResources(storages=StorageResource.list_from_api(raw))
+        return NodeStorageResources(storages=NodeStorageResource.list_from_api(raw))
 
     reboot = node_action("reboot")
     shutdown = node_action("shutdown")

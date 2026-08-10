@@ -1,6 +1,6 @@
 """aioproxmox models for Proxmox Virtualisation Engine."""
 
-from dataclasses import dataclass, field, fields
+from dataclasses import dataclass, field
 from enum import StrEnum
 import logging
 from typing import Annotated, Any, Self
@@ -24,16 +24,12 @@ class ProxmoxVEDataClass(DataClassDictMixin):
     @classmethod
     def from_api(cls, data: dict[str, Any]) -> Self:
         """Map raw data."""
-        kwargs = {}
-        for field_info in fields(cls):
-            api_name = field_info.metadata.get("alias", field_info.name)
-            kwargs[field_info.name] = data.get(api_name)
-        return cls(**kwargs)
+        return cls.from_dict(data)
 
     @classmethod
     def list_from_api(cls, raw: list[dict[str, Any]]) -> list[Self]:
         """Map raw lists."""
-        return [cls.from_api(item) for item in raw or []]
+        return [cls.from_dict(item) for item in raw or []]
 
 
 class ResourceType(StrEnum):
@@ -108,7 +104,7 @@ def deserialize_tags(value: Any) -> list[str]:
 
 
 @dataclass(slots=True)
-class NodeResource(ProxmoxVEDataClass):
+class ClusterNodeResource(ProxmoxVEDataClass):
     """Represents a physical Proxmox Node on Cluster Level."""
 
     id: str
@@ -122,8 +118,11 @@ class NodeResource(ProxmoxVEDataClass):
     maxdisk: int
     uptime: int
     resource_type: ResourceType = field(metadata={"alias": "type"})
-    cgroup_mode: int | None = field(default=None, metadata={"alias": "cgroup-mode"})
-    level: str | None = None
+
+    class Config(BaseConfig):
+        """Class configuration."""
+
+        allow_unknown_fields = True  # Drops cgroup-mode
 
 
 @dataclass(slots=True)
@@ -173,7 +172,7 @@ class NodeStatus(DataClassDictMixin):
 
     uptime: int
     cpu: float
-    idle: int
+    idle: float
     memory: ResourceMemoryStats
     swap: NodeSwapStats
     rootfs: ResourceDiskStats
@@ -345,8 +344,8 @@ class LXCStatus(DataClassDictMixin):
 
 
 @dataclass(slots=True)
-class StorageResource(ProxmoxVEDataClass):
-    """Represents a defined Cluster or Node Storage pool."""
+class ClusterStorageResource(ProxmoxVEDataClass):
+    """Represents a defined Cluster Storage pool."""
 
     id: str
     storage: str
@@ -361,10 +360,25 @@ class StorageResource(ProxmoxVEDataClass):
 
 
 @dataclass(slots=True)
-class StorageResources(ProxmoxVEDataClass):
+class NodeStorageResource(ProxmoxVEDataClass):
+    """Represents a defined Node Storage pool."""
+
+    enabled: bool
+    shared: bool
+    active: bool
+    total: int
+    avail: int
+    used: int
+    storage: str
+    used_fraction: float
+    resource_type: StoragePluginType = field(metadata={"alias": "type"})
+
+
+@dataclass(slots=True)
+class NodeStorageResources(ProxmoxVEDataClass):
     """List of storage on node."""
 
-    storages: list[StorageResource]
+    storages: list[NodeStorageResource]
 
 
 @dataclass(slots=True)
@@ -376,7 +390,7 @@ class NodeTask(ProxmoxVEDataClass):
     pid: int
     pstart: int
     starttime: int
-    resource_type: ResourceType = field(metadata={"alias": "type"})
+    task_type: str = field(metadata={"alias": "type"})
     upid: str
     user: str
 
@@ -392,7 +406,7 @@ class NodeTasks(ProxmoxVEDataClass):
 
 
 @dataclass(slots=True)
-class NetworkResource(ProxmoxVEDataClass):
+class ClusterNetworkResource(ProxmoxVEDataClass):
     """Represents a SDN or physical cluster network interface definition."""
 
     id: str
@@ -411,20 +425,23 @@ def route_pve_resource(data: Any) -> type:
     if isinstance(data, dict) and (kind := data.get("type")):
         match kind:
             case ResourceType.NODE | "node":
-                return NodeResource
+                return ClusterNodeResource
             case ResourceType.QEMU | "qemu":
                 return ClusterQemuResource
             case ResourceType.LXC | "lxc":
                 return ClusterContainerResource
             case ResourceType.STORAGE | "storage":
-                return StorageResource
+                return ClusterStorageResource
             case ResourceType.NETWORK | "network":
-                return NetworkResource
+                return ClusterNetworkResource
     raise ValueError(f"Unsupported or missing Proxmox resource type tag: {data}")
 
 
 ProxmoxResource = Annotated[
-    NodeResource | ClusterQemuResource | ClusterContainerResource | StorageResource,
+    ClusterNodeResource
+    | ClusterQemuResource
+    | ClusterContainerResource
+    | ClusterStorageResource,
     Discriminator(
         variant_tagger_fn=route_pve_resource,
         include_subtypes=True,  # Satisfies the internal Mashumaro safety guardrail
@@ -446,15 +463,15 @@ def deserialize_resource_list(value: Any) -> list[Any]:
         try:
             match kind:
                 case "node":
-                    parsed_items.append(NodeResource.from_dict(item))
+                    parsed_items.append(ClusterNodeResource.from_dict(item))
                 case "qemu":
                     parsed_items.append(ClusterQemuResource.from_dict(item))
                 case "lxc":
                     parsed_items.append(ClusterContainerResource.from_dict(item))
                 case "storage":
-                    parsed_items.append(StorageResource.from_dict(item))
+                    parsed_items.append(ClusterStorageResource.from_dict(item))
                 case "network":
-                    parsed_items.append(NetworkResource.from_dict(item))
+                    parsed_items.append(ClusterNetworkResource.from_dict(item))
                 case _:
                     _LOGGER.warning("Skipping unknown Proxmox resource type: %r", kind)
         except Exception:
@@ -468,11 +485,11 @@ class ClusterResourcesCollection(ProxmoxVEDataClass):
     """Container mapping to deserialize raw /cluster/resources payloads securely."""
 
     resources: list[
-        NodeResource
+        ClusterNodeResource
         | ClusterQemuResource
         | ClusterContainerResource
-        | StorageResource
-        | NetworkResource
+        | ClusterStorageResource
+        | ClusterNetworkResource
     ] = field(metadata={"deserialize": deserialize_resource_list})
 
     def __iter__(self) -> Any:
@@ -484,7 +501,7 @@ class ClusterResourcesCollection(ProxmoxVEDataClass):
 class ClusterCache:
     """Centralized, indexed state hub storing real-time telemetry metrics."""
 
-    nodes: dict[str, NodeResource] = field(default_factory=dict)
+    nodes: dict[str, ClusterNodeResource] = field(default_factory=dict)
     qemu: dict[int, ClusterQemuResource] = field(default_factory=dict)
     lxc: dict[int, ClusterContainerResource] = field(default_factory=dict)
-    storage: dict[str, StorageResource] = field(default_factory=dict)
+    storage: dict[str, ClusterStorageResource] = field(default_factory=dict)
