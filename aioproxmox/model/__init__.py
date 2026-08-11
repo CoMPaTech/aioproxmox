@@ -46,8 +46,19 @@ class PVEPermissions:
         return cls(_perm_map=compiled)
 
     def has_permission(self, path: str, privilege: str) -> bool:
-        """Check if a specific path has an exact privilege."""
-        return privilege in self._perm_map.get(path, set())
+        """Check privilege using ProxmoxVE ACL inheritance."""
+        paths = [
+            path,
+            path.rpartition("/")[0],
+            "/",
+        ]
+
+        for p in paths:
+            privs = self._perm_map.get(p)
+            if privs and privilege in privs:
+                return True
+
+        return False
 
     def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
         """Helper to check permissions for a specific VM ID."""
