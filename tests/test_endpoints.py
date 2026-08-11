@@ -150,6 +150,29 @@ async def test_node_endpoint_storage(mock_cluster_node_storage):
 
     storage = await endpoint.storage()
     assert storage.storages[0].storage == "local"
+    assert storage.storages[0].used_fraction > 0
+
+    assert storage.storages[1].storage == "pbs"
+    assert storage.storages[1].used_fraction > 0
+    assert storage.storages[1].avail > 0
+
+
+@pytest.mark.asyncio
+async def test_node_endpoint_storage_offline(mock_cluster_node_storage_offline):
+    """Test node-level storage fetchers."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(return_value=mock_cluster_node_storage_offline)
+
+    endpoint = NodeEndpoint(mock_client, "pve-01")
+
+    storage = await endpoint.storage()
+    assert storage.storages[0].storage == "local"
+    assert storage.storages[0].active == 1
+    assert storage.storages[0].used_fraction > 0
+
+    assert storage.storages[1].storage == "pbs"
+    assert storage.storages[1].active == 0
+    assert storage.storages[1].avail == 0
 
 
 @pytest.mark.asyncio

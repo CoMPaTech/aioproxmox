@@ -366,12 +366,14 @@ class NodeStorageResource(ProxmoxVEDataClass):
     enabled: bool
     shared: bool
     active: bool
-    total: int
-    avail: int
-    used: int
     storage: str
-    used_fraction: float
     resource_type: StoragePluginType = field(metadata={"alias": "type"})
+    # Capacity fields are NOT included when storage
+    # is offline/inactive
+    total: int = 0
+    avail: int = 0
+    used: int = 0
+    used_fraction: float = 0.0
 
 
 @dataclass(slots=True)
