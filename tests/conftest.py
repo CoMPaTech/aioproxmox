@@ -43,6 +43,12 @@ def mock_cluster_node_storage() -> list[dict]:
 
 
 @pytest.fixture
+def mock_cluster_node_storage_offline() -> list[dict]:
+    """Return fixture cluster node storage partially offline."""
+    return mock_pve_fixture("single_924_cluster_node_storage_offline.json")
+
+
+@pytest.fixture
 def mock_pve_dual_node_cluster_raw() -> list[dict]:
     """Represents raw data payload from a 2-node cluster with mixed VMs and LXCs."""
     return [
