@@ -13,6 +13,7 @@ from aioproxmox.endpoints import (
 )
 from aioproxmox.exceptions import ProxmoxAPIError, ResourceNotFoundError
 from aioproxmox.model.pve import (
+    AptArchType,
     ClusterCache,
     ClusterQemuResource,
     ClusterResourcesCollection,
@@ -318,21 +319,23 @@ async def test_tasks_endpoint(mock_cluster_backup_tasks):
 async def test_qemu_snapshot_creation():
     """Test QEMU snapshot creation with full payload options."""
     mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value="UPID:pve-01:00001234...")
+    mock_client.request = AsyncMock(return_value="UPID:pve-01:00001234...")
 
     endpoint = NodeEndpoint(mock_client, "pve-01").qemu(100)
-    endpoint.status.snapshot_name = "pre-upgrade"
-    endpoint.status.snapshot_description = "Backup before OS update"
-    endpoint.status.snapshot_state = True
 
-    upid = await endpoint.status.snapshot()
+    upid = await endpoint.status.snapshot(
+        snap_name="pre-upgrade",
+        snap_description="Backup before OS update",
+        snap_state=True,
+    )
 
     assert upid == "UPID:pve-01:00001234..."
-    mock_client.post.assert_called_once_with(
+    mock_client.request.assert_called_once_with(
+        "POST",
         "nodes/pve-01/qemu/100/snapshot",
         data={
             "snapname": "pre-upgrade",
-            "vmstate": True,
+            "vmstate": 1,
             "description": "Backup before OS update",
         },
     )
@@ -342,20 +345,73 @@ async def test_qemu_snapshot_creation():
 async def test_lxc_snapshot_creation():
     """Test LXC snapshot creation without description."""
     mock_client = MagicMock()
-    mock_client.post = AsyncMock(return_value="UPID:pve-01:00005678...")
+    mock_client.request = AsyncMock(return_value="UPID:pve-01:00005678...")
 
     endpoint = NodeEndpoint(mock_client, "pve-01").lxc(202)
-    endpoint.status.snapshot_name = "quick-snap"
-    endpoint.status.snapshot_description = None
-    endpoint.status.snapshot_state = False
 
-    upid = await endpoint.status.snapshot()
+    upid = await endpoint.status.snapshot(
+        snap_name="quick-snap",
+        snap_description=None,
+        snap_state=False,
+    )
 
     assert upid == "UPID:pve-01:00005678..."
-    mock_client.post.assert_called_once_with(
+    mock_client.request.assert_called_once_with(
+        "POST",
         "nodes/pve-01/lxc/202/snapshot",
         data={
             "snapname": "quick-snap",
             "vmstate": False,
         },
     )
+
+
+@pytest.mark.asyncio
+async def test_node_endpoint_version():
+    """Test node version information."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(
+        return_value={"release": "7.4-3", "repoid": "123456", "version": "7.4"}
+    )
+
+    endpoint = NodeEndpoint(mock_client, "pve-01")
+    version = await endpoint.version()
+
+    assert version.release == "7.4-3"
+    assert version.repoid == "123456"
+    assert version.version == "7.4"
+
+    mock_client.request.assert_called_with("GET", "nodes/pve-01/version")
+
+
+@pytest.mark.asyncio
+async def test_node_apt_update():
+    """Test node apt available update(s) information."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(
+        return_value=[
+            {
+                "Description": "Security update",
+                "Arch": "amd64",
+                "Package": "openssl",
+                "Priority": "important",
+                "Section": "security",
+                "Title": "OpenSSL update",
+                "Version": "1.1.1u-1",
+                "NotifyStatus": "",
+                "OldVersion": "1.1.1t-1",
+            }
+        ]
+    )
+
+    endpoint = NodeEndpoint(mock_client, "pve-01")
+    updates = await endpoint.apt().update()
+
+    assert len(updates.items) == 1
+    item = updates.items[0]
+
+    assert item.package == "openssl"
+    assert item.arch == AptArchType.AMD64
+    assert item.version == "1.1.1u-1"
+
+    mock_client.request.assert_called_with("GET", "nodes/pve-01/apt/update")

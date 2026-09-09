@@ -65,6 +65,24 @@ class OperationalStatus(StrEnum):
         return cls.UNKNOWN
 
 
+class AptArchType(StrEnum):
+    """Architecture types from apt."""
+
+    ARMHF = "armhf"
+    ARM64 = "arm64"
+    AMD64 = "amd64"
+    PPC64EL = "ppc64el"
+    RISC64 = "riscv64"
+    S390X = "s390x"
+    UNKNOWN = "unknown"
+    ALL = "all"
+
+    @classmethod
+    def _missing_(cls, value: Any) -> AptArchType:
+        _LOGGER.warning("Unknown Proxmox apt architecture type encountered: %r", value)
+        return cls.UNKNOWN
+
+
 class QmpStatus(StrEnum):
     """QMP engine status of QEMU."""
 
@@ -187,6 +205,38 @@ class NodeStatus(DataClassDictMixin):
         allow_unknown_fields = (
             True  # Drops boot-info, kversion, and kernel metadata gracefully
         )
+
+
+@dataclass(slots=True)
+class NodeVersion(DataClassDictMixin):
+    """Represents data returned by /nodes/{node}/version."""
+
+    release: str
+    repoid: str
+    version: str
+
+
+@dataclass(slots=True)
+class NodeAptUpdateProperty(DataClassDictMixin):
+    """Represents individual apt package update property status."""
+
+    description: str = field(metadata={"alias": "Description"})
+    arch: AptArchType = field(metadata={"alias": "Arch"})
+    package: str = field(metadata={"alias": "Package"})
+    priority: str = field(metadata={"alias": "Priority"})
+    section: str = field(metadata={"alias": "Section"})
+    title: str = field(metadata={"alias": "Title"})
+    version: str = field(metadata={"alias": "Version"})
+
+    notify_status: str = field(default="", metadata={"alias": "NotifyStatus"})
+    old_version: str = field(default="", metadata={"alias": "OldVersion"})
+
+
+@dataclass(slots=True)
+class NodeAptUpdate(DataClassDictMixin):
+    """Represents the all apt update status' returned by /nodes/{node}/apt/update."""
+
+    items: list[NodeAptUpdateProperty]
 
 
 @dataclass(slots=True)

@@ -55,6 +55,7 @@ import asyncio
 import aiohttp
 import aioproxmox
 
+
 async def main():
     async with aiohttp.ClientSession() as session:
         # Initialize the type-safe client backend
@@ -63,7 +64,7 @@ async def main():
             host="192.168.1.100",
             user="root@pam",
             password="your_secure_password",
-            verify_ssl=False
+            verify_ssl=False,
         )
 
         cluster = await pve.connect()
@@ -97,14 +98,12 @@ if __name__ == "__main__":
 
 ```python
 """Example implementation, see scripts/live_test.py for more examples."""
+
 from proxmoxer import ProxmoxAPI
 
 # Initialize synchronous client
 proxmox = ProxmoxAPI(
-    "192.168.1.100",
-    user="root@pam",
-    password="your_secure_password",
-    verify_ssl=False
+    "192.168.1.100", user="root@pam", password="your_secure_password", verify_ssl=False
 )
 
 # 1. Fetch cluster resources (returns raw lists of dicts)
