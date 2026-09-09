@@ -10,11 +10,14 @@ from .model.pve import (
     ClusterResourcesCollection,
     ContainerResource,
     LXCStatus,
+    NodeAptUpdate,
+    NodeAptUpdateProperty,
     NodeStatus,
     NodeStorageResource,
     NodeStorageResources,
     NodeTask,
     NodeTasks,
+    NodeVersion,
     QemuResource,
     QemuStatus,
 )
@@ -135,18 +138,11 @@ class QemuStatusEndpoint:
         client: Any,
         node: str,
         vmid: int,
-        *,
-        snapshot_name: str | None = None,
-        snapshot_description: str | None = None,
-        snapshot_state: bool = True,
     ) -> None:
         """Endpoint initialisation."""
         self.client = client
         self.node = node
         self.vmid = vmid
-        self.snapshot_name = snapshot_name
-        self.snapshot_description = snapshot_description
-        self.snapshot_state = snapshot_state
 
     async def status(self) -> None:
         """Return generic Qemu info."""
@@ -183,18 +179,25 @@ class QemuStatusEndpoint:
             )
         return QemuStatus.from_dict(raw)
 
-    async def snapshot(self) -> str:
+    async def snapshot(
+        self,
+        snap_name: str | None = None,
+        snap_description: str | None = None,
+        snap_state: bool = True,
+    ) -> str:
         """Create a new Snapshot for a VM."""
         payload = {
-            "snapname": self.snapshot_name,
-            "vmstate": int(self.snapshot_state),  # Note, convert bool back to int
+            "snapname": snap_name,
+            "vmstate": int(snap_state),  # Note, convert bool back to int
         }
-        if self.snapshot_description:
-            payload["description"] = self.snapshot_description
+        if snap_description:
+            payload["description"] = snap_description
 
         return str(
-            await self.client.post(
-                f"nodes/{self.node}/qemu/{self.vmid}/snapshot", data=payload
+            await self.client.request(
+                "POST",
+                f"nodes/{self.node}/qemu/{self.vmid}/snapshot",
+                data=payload,
             )
         )
 
@@ -227,18 +230,11 @@ class LXCStatusEndpoint:
         client: Any,
         node: str,
         vmid: int,
-        *,
-        snapshot_name: str | None = None,
-        snapshot_description: str | None = None,
-        snapshot_state: bool = True,
     ) -> None:
         """Endpoint initialisation."""
         self.client = client
         self.node = node
         self.vmid = vmid
-        self.snapshot_name = snapshot_name
-        self.snapshot_description = snapshot_description
-        self.snapshot_state = snapshot_state
 
     async def status(self) -> None:
         """Return generic LXC info."""
@@ -275,18 +271,25 @@ class LXCStatusEndpoint:
             )
         return LXCStatus.from_dict(raw)
 
-    async def snapshot(self) -> str:
+    async def snapshot(
+        self,
+        snap_name: str | None = None,
+        snap_description: str | None = None,
+        snap_state: bool = True,
+    ) -> str:
         """Create a new Snapshot for a VM."""
         payload = {
-            "snapname": self.snapshot_name,
-            "vmstate": int(self.snapshot_state),  # Note, convert bool back to int
+            "snapname": snap_name,
+            "vmstate": int(snap_state),  # Note, convert bool back to int
         }
-        if self.snapshot_description:
-            payload["description"] = self.snapshot_description
+        if snap_description:
+            payload["description"] = snap_description
 
         return str(
-            await self.client.post(
-                f"nodes/{self.node}/lxc/{self.vmid}/snapshot", data=payload
+            await self.client.request(
+                "POST",
+                f"nodes/{self.node}/lxc/{self.vmid}/snapshot",
+                data=payload,
             )
         )
 
@@ -321,6 +324,21 @@ class AccessEndpoint:
         return cast(PVEPermissions, self.client.permissions)
 
 
+class NodeAptEndpoint:
+    """APT endpoint for a node."""
+
+    def __init__(self, client: Any, node: str) -> None:
+        """APT endpoint for a node."""
+        self.client = client
+        self.node = node
+
+    async def update(self) -> NodeAptUpdate:
+        """Fetch apt update list."""
+        raw = await self.client.request("GET", f"nodes/{self.node}/apt/update")
+        items = [NodeAptUpdateProperty.from_dict(item) for item in raw or []]
+        return NodeAptUpdate(items=items)
+
+
 class NodeEndpoint:
     """Node endpoint."""
 
@@ -328,6 +346,10 @@ class NodeEndpoint:
         """Endpoint initialisation."""
         self.client = client
         self.node = node
+
+    def apt(self) -> NodeAptEndpoint:
+        """Map APT endpoint."""
+        return NodeAptEndpoint(self.client, self.node)
 
     def qemu(self, vmid: int) -> QemuEndpoint:
         """Map individual Qemu endpoint."""
@@ -374,6 +396,11 @@ class NodeEndpoint:
         """Fetch high-level allocations and health for all storages on this node."""
         raw = await self.client.request("GET", f"nodes/{self.node}/storage")
         return NodeStorageResources(storages=NodeStorageResource.list_from_api(raw))
+
+    async def version(self) -> NodeVersion:
+        """Fetch PVE version for this physical node."""
+        raw = await self.client.request("GET", f"nodes/{self.node}/version")
+        return NodeVersion.from_dict(raw)
 
     reboot = node_action("reboot")
     shutdown = node_action("shutdown")
