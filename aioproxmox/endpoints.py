@@ -181,7 +181,7 @@ class QemuStatusEndpoint:
 
     async def snapshot(
         self,
-        snap_name: str | None = None,
+        snap_name: str,
         snap_description: str | None = None,
         snap_state: bool = True,
     ) -> str:

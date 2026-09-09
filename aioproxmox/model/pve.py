@@ -72,7 +72,7 @@ class AptArchType(StrEnum):
     ARM64 = "arm64"
     AMD64 = "amd64"
     PPC64EL = "ppc64el"
-    RISC64 = "risc64"
+    RISC64 = "riscv64"
     S390X = "s390x"
     UNKNOWN = "unknown"
     ALL = "all"
