@@ -76,7 +76,7 @@ repos:
           - --keep-updates
         files: ^(aioproxmox|tests|script)/.+\.py$
   - repo: https://github.com/jackdewinter/pymarkdown
-    rev: v0.9.39
+    rev: v0.9.40
     hooks:
       - id: pymarkdown
         name: MarkDown Lint
