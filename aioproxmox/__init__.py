@@ -240,7 +240,7 @@ class ProxmoxVE:
         path: str,
         json_data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
-    ) -> dict[Any, Any] | list[Any] | dict[str, Any]:
+    ) -> Any:
         """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
         await self.auth.check_and_refresh(method=method)
 
@@ -278,12 +278,27 @@ class ProxmoxVE:
             **request_kwargs,
         ) as response:
             if response.status not in (200, 201):
-                text = await response.text()
-                raise ProxmoxAPIError(response.status, text, path)
+                # Proxmox puts what went wrong into the HTTP reason phrase -
+                # "Permission check failed (/nodes/pve, Sys.PowerMgmt)" - and
+                # answers with a body of `{"data":null}`. Keeping the body
+                # alone left the caller with nothing to report, so keep the
+                # reason, and the body where it says more.
+                text = (await response.text()).strip()
+                reason = response.reason if isinstance(response.reason, str) else ""
+                message = text
+                if not text or text.replace(" ", "") == '{"data":null}':
+                    message = reason
+                elif reason and reason not in text:
+                    message = f"{reason}: {text}"
+                raise ProxmoxAPIError(response.status, message, path)
 
             payload = await response.json()
-            data = payload.get("data", {})
-            return data if isinstance(data, (dict, list)) else {}
+            # A read answers with an object or a list; a command answers
+            # with the task id it queued, which is a string. Turning
+            # anything else into `{}` dropped exactly that - every
+            # `start`, `stop` or `vzdump` came back as if it had said
+            # nothing. Hand back what Proxmox said.
+            return payload.get("data") if isinstance(payload, dict) else payload
 
     @property
     def cluster(self) -> ClusterEndpoint:
