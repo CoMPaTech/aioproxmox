@@ -86,6 +86,33 @@ class LXCActionProperty:
         )
 
 
+class NodeStatusCommand:
+    """Descriptor for the node commands that go through `nodes/{node}/status`.
+
+    A node is rebooted or shut down with `POST nodes/{node}/status` and a
+    `command` parameter (PVE::API2::Nodes); there is no
+    `nodes/{node}/reboot` to post to.
+    """
+
+    def __init__(self, command: str) -> None:
+        """Initialize property."""
+        self.command = command
+
+    def __get__(self, instance: Any, owner: Any = None) -> Any:
+        """Call command."""
+        if instance is None:
+            return self
+
+        async def run() -> Any:
+            return await instance.client.request(
+                "POST",
+                f"nodes/{instance.node}/status",
+                json_data={"command": self.command},
+            )
+
+        return run
+
+
 def node_action(endpoint: str) -> NodeActionProperty:
     """Factory helper to declare a Node PostAction endpoint."""
     return NodeActionProperty(endpoint)
@@ -203,7 +230,10 @@ class QemuStatusEndpoint:
 
     start = qemu_action("start")
     stop = qemu_action("stop")
-    restart = qemu_action("restart")
+    reboot = qemu_action("reboot")
+    # Proxmox has no `restart` command for a guest; the attribute stays
+    # for callers that used it and now reaches the command it meant.
+    restart = qemu_action("reboot")
     suspend = qemu_action("suspend")
     resume = qemu_action("resume")
     reset = qemu_action("reset")
@@ -294,7 +324,9 @@ class LXCStatusEndpoint:
         )
 
     start = lxc_action("start")
-    restart = lxc_action("restart")
+    reboot = lxc_action("reboot")
+    # Proxmox has no `restart` command for a guest; see QemuStatusEndpoint.
+    restart = lxc_action("reboot")
     stop = lxc_action("stop")
 
 
@@ -402,8 +434,8 @@ class NodeEndpoint:
         raw = await self.client.request("GET", f"nodes/{self.node}/version")
         return NodeVersion.from_dict(raw)
 
-    reboot = node_action("reboot")
-    shutdown = node_action("shutdown")
+    reboot = NodeStatusCommand("reboot")
+    shutdown = NodeStatusCommand("shutdown")
     suspendall = node_action("suspendall")
     stopall = node_action("stopall")
     startall = node_action("startall")
