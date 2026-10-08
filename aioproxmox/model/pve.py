@@ -546,7 +546,10 @@ class ClusterResourcesCollection(ProxmoxVEDataClass):
         | ClusterContainerResource
         | ClusterStorageResource
         | ClusterNetworkResource
-    ] = field(metadata={"deserialize": deserialize_resource_list})
+    ] = field(
+        default_factory=list,
+        metadata={"deserialize": deserialize_resource_list},
+    )
 
     def __iter__(self) -> Any:
         """Provide iteration."""

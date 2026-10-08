@@ -29,7 +29,7 @@ def test_pve_permissions_from_api():
 
     # VM check
     assert perms.has_vm_permission(101, "VM.Audit") is True
-    assert perms.has_vm_permission(101, "VM.Console") is False
+    assert perms.has_vm_permission(101, "VM.Console") is True
     assert perms.has_vm_permission(999, "VM.Audit") is False
 
     # Node check

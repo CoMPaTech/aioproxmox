@@ -219,7 +219,7 @@ class ProxmoxVE:
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self.permissions = PVEPermissions()
-        self.cluster_resources: ClusterResourcesCollection
+        self.cluster_resources = ClusterResourcesCollection()
         self.cluster_cache = ClusterCache()
 
         auth_kwargs: dict[str, Any] = {
