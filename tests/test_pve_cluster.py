@@ -231,3 +231,35 @@ def test_cluster_collection_iteration(mock_pve_dual_node_cluster_raw):
     # Passing the collection directly to list() calls __iter__ under the hood
     items = list(collection)
     assert len(items) == 6
+
+
+def test_offline_node_without_capacity_fields():
+    """Ensure an offline node without capacity fields still parses."""
+    collection = ClusterResourcesCollection.from_dict(
+        {
+            "resources": [
+                {
+                    "id": "node/pve-02",
+                    "node": "pve-02",
+                    "status": "offline",
+                    "type": "node",
+                }
+            ]
+        }
+    )
+
+    node = collection.resources[0]
+    assert isinstance(node, ClusterNodeResource)
+    assert node.status == OperationalStatus.OFFLINE
+    assert node.cpu is None
+    assert node.maxmem is None
+    assert node.uptime is None
+
+
+def test_cluster_collection_default_empty():
+    """Ensure the collection defaults to no resources."""
+    collection = ClusterResourcesCollection()
+
+    assert not collection.resources
+    assert not list(collection)
+    assert not ClusterResourcesCollection.from_dict({}).resources

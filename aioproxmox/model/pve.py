@@ -128,14 +128,16 @@ class ClusterNodeResource(ProxmoxVEDataClass):
     id: str
     node: str
     status: OperationalStatus
-    cpu: float
-    maxcpu: int
-    mem: int
-    maxmem: int
-    disk: int
-    maxdisk: int
-    uptime: int
     resource_type: ResourceType = field(metadata={"alias": "type"})
+    # Capacity fields are NOT included when node
+    # is offline/inactive
+    cpu: float | None = None
+    maxcpu: int | None = None
+    mem: int | None = None
+    maxmem: int | None = None
+    disk: int | None = None
+    maxdisk: int | None = None
+    uptime: int | None = None
 
     class Config(BaseConfig):
         """Class configuration."""
@@ -227,6 +229,7 @@ class NodeAptUpdateProperty(DataClassDictMixin):
     section: str = field(metadata={"alias": "Section"})
     title: str = field(metadata={"alias": "Title"})
     version: str = field(metadata={"alias": "Version"})
+    origin: str = field(default="", metadata={"alias": "Origin"})
 
     notify_status: str = field(default="", metadata={"alias": "NotifyStatus"})
     old_version: str = field(default="", metadata={"alias": "OldVersion"})
@@ -418,12 +421,12 @@ class NodeStorageResource(ProxmoxVEDataClass):
     active: bool
     storage: str
     resource_type: StoragePluginType = field(metadata={"alias": "type"})
-    # Capacity fields are NOT included when storage
+    # Capacity fields are NOT included when the node or storage
     # is offline/inactive
-    total: int = 0
-    avail: int = 0
-    used: int = 0
-    used_fraction: float = 0.0
+    total: int | None = None
+    avail: int | None = None
+    used: int | None = None
+    used_fraction: float | None = None
 
 
 @dataclass(slots=True)
@@ -543,7 +546,10 @@ class ClusterResourcesCollection(ProxmoxVEDataClass):
         | ClusterContainerResource
         | ClusterStorageResource
         | ClusterNetworkResource
-    ] = field(metadata={"deserialize": deserialize_resource_list})
+    ] = field(
+        default_factory=list,
+        metadata={"deserialize": deserialize_resource_list},
+    )
 
     def __iter__(self) -> Any:
         """Provide iteration."""

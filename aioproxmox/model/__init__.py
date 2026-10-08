@@ -26,39 +26,35 @@ class PVECapabilities:
 
 @dataclass(slots=True)
 class PVEPermissions:
-    """Strongly-typed lookup mapping paths (vms, storage, nodes) to specific ACL privileges."""
+    """Effective ACL privileges per path, as returned by /access/permissions."""
 
-    # Internal structure: dict[path_string, set[privilege_strings]]
+    # path -> {privilege: whether it propagates to child paths}
     # Example: {"/vms/101": {"VM.Audit", "VM.PowerMgmt"}}
-    _perm_map: dict[str, set[str]] = field(default_factory=dict)
+    _perm_map: dict[str, dict[str, bool]] = field(default_factory=dict)
 
     @classmethod
     def from_api_response(cls, data: dict[str, dict[str, int]]) -> PVEPermissions:
-        """Factory to compile the raw access/permissions dict into clean lookups."""
-        compiled: dict[str, set[str]] = {}
-
-        for path, priv_dict in data.items():
-            # Proxmox returns permissions as {"VM.Audit": 1, "VM.PowerMgmt": 1}
-            allowed_privs = {priv for priv, val in priv_dict.items() if val == 1}
-            if allowed_privs:
-                compiled[path] = allowed_privs
-
-        return cls(_perm_map=compiled)
+        """Compile the raw access/permissions response."""
+        # Keep empty paths: they mean "nothing granted here"
+        return cls(
+            _perm_map={
+                path: {priv: bool(propagate) for priv, propagate in privs.items()}
+                for path, privs in data.items()
+            }
+        )
 
     def has_permission(self, path: str, privilege: str) -> bool:
-        """Check privilege using ProxmoxVE ACL inheritance."""
-        paths = [
-            path,
-            path.rpartition("/")[0],
-            "/",
-        ]
-
-        for p in paths:
-            privs = self._perm_map.get(p)
-            if privs and privilege in privs:
-                return True
-
-        return False
+        """Check a privilege on the closest path Proxmox reported."""
+        path = path.rstrip("/") or "/"
+        current = path
+        while True:
+            if (privs := self._perm_map.get(current)) is not None:
+                if current == path:
+                    return privilege in privs
+                return privs.get(privilege, False)
+            if current == "/":
+                return False
+            current = current.rpartition("/")[0] or "/"
 
     def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
         """Helper to check permissions for a specific VM ID."""
