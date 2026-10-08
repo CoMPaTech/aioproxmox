@@ -335,7 +335,7 @@ async def test_qemu_snapshot_creation():
     mock_client.request.assert_called_once_with(
         "POST",
         "nodes/pve-01/qemu/100/snapshot",
-        data={
+        json_data={
             "snapname": "pre-upgrade",
             "vmstate": 1,
             "description": "Backup before OS update",
@@ -354,16 +354,14 @@ async def test_lxc_snapshot_creation():
     upid = await endpoint.status.snapshot(
         snap_name="quick-snap",
         snap_description=None,
-        snap_state=False,
     )
 
     assert upid == "UPID:pve-01:00005678..."
     mock_client.request.assert_called_once_with(
         "POST",
         "nodes/pve-01/lxc/202/snapshot",
-        data={
+        json_data={
             "snapname": "quick-snap",
-            "vmstate": False,
         },
     )
 
