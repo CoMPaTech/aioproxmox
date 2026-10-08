@@ -229,6 +229,7 @@ class NodeAptUpdateProperty(DataClassDictMixin):
     section: str = field(metadata={"alias": "Section"})
     title: str = field(metadata={"alias": "Title"})
     version: str = field(metadata={"alias": "Version"})
+    origin: str = field(metadata={"alias": "Origin"})
 
     notify_status: str = field(default="", metadata={"alias": "NotifyStatus"})
     old_version: str = field(default="", metadata={"alias": "OldVersion"})

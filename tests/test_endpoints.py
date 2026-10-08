@@ -398,6 +398,7 @@ async def test_node_apt_update():
                 "Section": "security",
                 "Title": "OpenSSL update",
                 "Version": "1.1.1u-1",
+                "Origin": "Proxmox",
                 "NotifyStatus": "",
                 "OldVersion": "1.1.1t-1",
             }
