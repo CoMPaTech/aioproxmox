@@ -131,7 +131,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                 ) as otpresp:
                     if otpresp.status == 401:
                         raise ProxmoxAuthError(
-                            f"Couldn't authenticate user {self.username} to {self.base_url}/access/ticket: Code {response.status}"
+                            f"Couldn't authenticate user {self.username} to {self.base_url}/access/ticket: Code {otpresp.status}"
                         )
                     if otpresp.status != 200:
                         raise ProxmoxAPIError(

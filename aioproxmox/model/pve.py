@@ -129,7 +129,7 @@ class ClusterNodeResource(ProxmoxVEDataClass):
     node: str
     status: OperationalStatus
     resource_type: ResourceType = field(metadata={"alias": "type"})
-    # Capacity fields are NOT included when storage
+    # Capacity fields are NOT included when node
     # is offline/inactive
     cpu: float | None = None
     maxcpu: int | None = None
@@ -421,7 +421,7 @@ class NodeStorageResource(ProxmoxVEDataClass):
     active: bool
     storage: str
     resource_type: StoragePluginType = field(metadata={"alias": "type"})
-    # Capacity fields are NOT included when the node
+    # Capacity fields are NOT included when the node or storage
     # is offline/inactive
     total: int | None = None
     avail: int | None = None
