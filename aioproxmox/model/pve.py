@@ -128,14 +128,16 @@ class ClusterNodeResource(ProxmoxVEDataClass):
     id: str
     node: str
     status: OperationalStatus
-    cpu: float
-    maxcpu: int
-    mem: int
-    maxmem: int
-    disk: int
-    maxdisk: int
-    uptime: int
     resource_type: ResourceType = field(metadata={"alias": "type"})
+    # Capacity fields are NOT included when storage
+    # is offline/inactive
+    cpu: float | None = None
+    maxcpu: int | None = None
+    mem: int | None = None
+    maxmem: int | None = None
+    disk: int | None = None
+    maxdisk: int | None = None
+    uptime: int | None = None
 
     class Config(BaseConfig):
         """Class configuration."""
@@ -420,10 +422,10 @@ class NodeStorageResource(ProxmoxVEDataClass):
     resource_type: StoragePluginType = field(metadata={"alias": "type"})
     # Capacity fields are NOT included when storage
     # is offline/inactive
-    total: int = 0
-    avail: int = 0
-    used: int = 0
-    used_fraction: float = 0.0
+    total: int | None = None
+    avail: int | None = None
+    used: int | None = None
+    used_fraction: float | None = None
 
 
 @dataclass(slots=True)
