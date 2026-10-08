@@ -229,7 +229,7 @@ class NodeAptUpdateProperty(DataClassDictMixin):
     section: str = field(metadata={"alias": "Section"})
     title: str = field(metadata={"alias": "Title"})
     version: str = field(metadata={"alias": "Version"})
-    origin: str = field(metadata={"alias": "Origin"})
+    origin: str = field(default="", metadata={"alias": "Origin"})
 
     notify_status: str = field(default="", metadata={"alias": "NotifyStatus"})
     old_version: str = field(default="", metadata={"alias": "OldVersion"})
@@ -421,7 +421,7 @@ class NodeStorageResource(ProxmoxVEDataClass):
     active: bool
     storage: str
     resource_type: StoragePluginType = field(metadata={"alias": "type"})
-    # Capacity fields are NOT included when storage
+    # Capacity fields are NOT included when the node
     # is offline/inactive
     total: int | None = None
     avail: int | None = None

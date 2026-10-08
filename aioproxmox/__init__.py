@@ -129,13 +129,13 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                     timeout=timeout,
                     ssl=self.verify_ssl,
                 ) as otpresp:
-                    if response.status == 401:
+                    if otpresp.status == 401:
                         raise ProxmoxAuthError(
                             f"Couldn't authenticate user {self.username} to {self.base_url}/access/ticket: Code {response.status}"
                         )
-                    if response.status != 200:
+                    if otpresp.status != 200:
                         raise ProxmoxAPIError(
-                            response.status, await response.text(), "access/ticket"
+                            otpresp.status, await otpresp.text(), "access/ticket"
                         )
                     otp_json = await otpresp.json()
                     otpresp_data = otp_json.get("data")
