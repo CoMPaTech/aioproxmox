@@ -367,6 +367,29 @@ async def test_lxc_snapshot_creation():
 
 
 @pytest.mark.asyncio
+async def test_lxc_snapshot_creation_with_description():
+    """Test LXC snapshot creation with description."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(return_value="UPID:pve-01:00005678...")
+
+    endpoint = NodeEndpoint(mock_client, "pve-01").lxc(202)
+
+    await endpoint.status.snapshot(
+        snap_name="quick-snap",
+        snap_description="Before upgrade",
+    )
+
+    mock_client.request.assert_called_once_with(
+        "POST",
+        "nodes/pve-01/lxc/202/snapshot",
+        json_data={
+            "snapname": "quick-snap",
+            "description": "Before upgrade",
+        },
+    )
+
+
+@pytest.mark.asyncio
 async def test_node_endpoint_version():
     """Test node version information."""
     mock_client = MagicMock()

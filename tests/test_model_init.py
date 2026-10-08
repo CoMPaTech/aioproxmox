@@ -41,3 +41,35 @@ def test_pve_permissions_from_api():
 
     # Generic check
     assert perms.has_permission("/vms/101", "VM.PowerMgmt") is True
+
+
+def test_pve_permissions_inheritance():
+    """Test privileges propagate from the closest parent path only when flagged."""
+    perms = PVEPermissions.from_api_response(
+        {
+            "/": {"Sys.Audit": 1, "VM.Audit": 0},
+            "/vms": {"VM.PowerMgmt": 1},
+            "/vms/200": {},
+        }
+    )
+
+    # Inherited from /vms with propagate flag
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is True
+    # /vms is the closest match, so / is not consulted
+    assert perms.has_vm_permission(101, "Sys.Audit") is False
+    # Empty path means nothing is granted there
+    assert perms.has_vm_permission(200, "VM.PowerMgmt") is False
+    # Non-propagating privilege only applies on the exact path
+    assert perms.has_permission("/", "VM.Audit") is True
+    assert perms.has_node_permission("pve-01", "VM.Audit") is False
+    assert perms.has_node_permission("pve-01", "Sys.Audit") is True
+    # Trailing slashes are normalised
+    assert perms.has_permission("/vms/", "VM.PowerMgmt") is True
+    assert perms.has_permission("//", "Sys.Audit") is True
+
+
+def test_pve_permissions_no_root():
+    """Test lookup without a root entry returns False."""
+    perms = PVEPermissions.from_api_response({"/vms/101": {"VM.Audit": 1}})
+
+    assert perms.has_storage_permission("local", "Datastore.Audit") is False
