@@ -224,7 +224,7 @@ class QemuStatusEndpoint:
             await self.client.request(
                 "POST",
                 f"nodes/{self.node}/qemu/{self.vmid}/snapshot",
-                data=payload,
+                json_data=payload,
             )
         )
 
@@ -303,14 +303,12 @@ class LXCStatusEndpoint:
 
     async def snapshot(
         self,
-        snap_name: str | None = None,
+        snap_name: str,
         snap_description: str | None = None,
-        snap_state: bool = True,
     ) -> str:
         """Create a new Snapshot for a VM."""
         payload = {
             "snapname": snap_name,
-            "vmstate": int(snap_state),  # Note, convert bool back to int
         }
         if snap_description:
             payload["description"] = snap_description
@@ -319,7 +317,7 @@ class LXCStatusEndpoint:
             await self.client.request(
                 "POST",
                 f"nodes/{self.node}/lxc/{self.vmid}/snapshot",
-                data=payload,
+                json_data=payload,
             )
         )
 

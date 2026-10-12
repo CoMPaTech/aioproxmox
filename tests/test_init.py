@@ -105,6 +105,24 @@ async def test_http_auth_ticket_failure():
 
 
 @pytest.mark.asyncio
+async def test_http_auth_ticket_api_error():
+    """Test non-401 error on ticket request raises an API error."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    mock_resp = AsyncMock()
+    mock_resp.status = 500
+    mock_resp.text.return_value = "Internal Server Error"
+    session.post.return_value.__aenter__.return_value = mock_resp
+
+    auth = ProxmoxHTTPAuth("root@pam", "pass", base_url="https://mock", session=session)
+
+    with pytest.raises(ProxmoxAPIError) as exc_info:
+        await auth.async_init()
+
+    assert exc_info.value.status == 500
+    assert exc_info.value.endpoint == "access/ticket"
+
+
+@pytest.mark.asyncio
 async def test_http_auth_ticket_tfa_success():
     """Test successful Two-Factor Authentication flow."""
     session = AsyncMock(spec=aiohttp.ClientSession)
@@ -213,6 +231,9 @@ async def test_pve_connect_and_properties():
     # Default port generation test
     assert pve.base_url == "https://127.0.0.1:8006/api2/json"
 
+    # Cluster resources are usable before connecting
+    assert not list(pve.cluster_resources)
+
     # Endpoints
     assert isinstance(pve.cluster, ClusterEndpoint)
     assert isinstance(pve.access, AccessEndpoint)
@@ -261,3 +282,36 @@ async def test_request_query_params_and_csrf():
     post_kwargs = session.request.call_args[1]
     assert post_kwargs["json"] == {"new_val": "data"}
     assert post_kwargs["headers"]["CSRFPreventionToken"] == "mutation_csrf"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "expected"),
+    [(401, ProxmoxAuthError), (500, ProxmoxAPIError)],
+)
+async def test_http_auth_ticket_tfa_error_status(status, expected):
+    """Test error status codes on the Two-Factor Authentication request."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+
+    mock_resp1 = AsyncMock()
+    mock_resp1.status = 200
+    mock_resp1.json.return_value = {
+        "data": {"ticket": "temp", "CSRFPreventionToken": "temp", "NeedTFA": 1}
+    }
+
+    mock_resp2 = AsyncMock()
+    mock_resp2.status = status
+    mock_resp2.text.return_value = "error"
+
+    session.post.side_effect = [
+        AsyncMock(__aenter__=AsyncMock(return_value=mock_resp1)),
+        AsyncMock(__aenter__=AsyncMock(return_value=mock_resp2)),
+    ]
+
+    auth = ProxmoxHTTPAuth(
+        "root@pam", "password", otp="123456", base_url="https://mock", session=session
+    )
+
+    with pytest.raises(expected):
+        await auth.async_init()
+    mock_resp2.json.assert_not_called()
