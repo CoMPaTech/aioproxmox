@@ -10,7 +10,7 @@ description     = "Asynchronous Python library for Proxmox products."
 readme          = "README.md"
 keywords        = ["home", "automation", "proxmox", "pve", "proxmoxve", "pdm", "proxmoxdm", "pbs", "proxmoxbs"]
 classifiers     = [
-    "Development Status :: 3 - Alpha",
+    "Development Status :: 4 - Beta",
     "Intended Audience :: Developers",
     "Operating System :: OS Independent",
     "Programming Language :: Python :: 3.14",
