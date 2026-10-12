@@ -2,8 +2,8 @@
 
 For every route this library calls, the schema says which privilege
 Proxmox checks before answering. That is kept as plain data next to the
-code rather than looked up from the schema at runtime: 43 entries instead
-of a 144 KB file in every installation.
+code rather than looked up from the schema at runtime: one entry per
+route that states a check, instead of a 144 KB file in every installation.
 
 Run `python script/generate_privileges.py` after refreshing the schema;
 the test compares what it would write against what is there, so a
@@ -82,9 +82,12 @@ def entries() -> dict[tuple[str, str], tuple[Alternative, ...]]:
     found: dict[tuple[str, str], tuple[Alternative, ...]] = {}
     for route in routes:
         info = api.get(f"/{route.path}", {}).get(route.method)
-        if info is None or not (check := info.get("check")):
+        # A route without a check key states none; one whose check is
+        # there but empty is malformed, and alternatives() refuses it
+        # rather than letting it drop out of the map unnoticed.
+        if info is None or "check" not in info:
             continue
-        found[route.method, route.path] = alternatives(check)
+        found[route.method, route.path] = alternatives(info["check"])
     return found
 
 
@@ -104,9 +107,10 @@ def render() -> str:
 
 def main() -> None:
     """Write the module and say how much of the API it covers."""
-    text = render()
-    TARGET.write_text(text, encoding="utf-8", newline="\n")
-    print(f"{TARGET}: {text.count('): (')} routes with a stated check")
+    TARGET.write_text(render(), encoding="utf-8", newline="\n")
+    # Counted from the data: the module's docstring shows a sample entry,
+    # so counting the rendered text was one too many.
+    print(f"{TARGET}: {len(entries())} routes with a stated check")
 
 
 if __name__ == "__main__":

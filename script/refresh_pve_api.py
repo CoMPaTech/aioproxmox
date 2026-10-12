@@ -52,13 +52,17 @@ def fetch(url: str = SOURCE) -> tuple[list[dict[str, Any]], str]:
     return parsed, last_modified
 
 
-def recorded_source() -> dict[str, str]:
-    """Return the `_source` entry of the extract on disk, if it has one."""
+def on_disk() -> dict[str, Any]:
+    """Return the extract as it was before this run, or nothing."""
     if not TARGET.exists():
         return {}
-    on_disk: dict[str, Any] = json.loads(TARGET.read_text(encoding="utf-8"))
-    source = on_disk.get(SOURCE_KEY)
-    return source if isinstance(source, dict) else {}
+    parsed: dict[str, Any] = json.loads(TARGET.read_text(encoding="utf-8"))
+    return parsed
+
+
+def routes_of(extract: dict[str, Any]) -> dict[str, Any]:
+    """Return the routes of an extract, without its `_source` entry."""
+    return {path: info for path, info in extract.items() if path.startswith("/")}
 
 
 def flatten(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
@@ -77,7 +81,7 @@ def flatten(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
 def main() -> None:
     """Write the trimmed schema and say what it holds."""
-    before = recorded_source()
+    before = on_disk()
     nodes, last_modified = fetch()
     routes: dict[str, Any] = dict(flatten(nodes))
     routes[SOURCE_KEY] = {
@@ -94,10 +98,23 @@ def main() -> None:
         len(methods) for path, methods in routes.items() if path.startswith("/")
     )
     print(f"{TARGET}: {paths} paths, {methods} method and path pairs")
-    if (was := before.get("last_modified")) and was != last_modified:
-        print(f"published schema changed: {was} -> {last_modified}")
-    elif was:
-        print(f"published schema unchanged since {was}")
+    # Decided by the routes themselves: the header is a convenience the
+    # server may leave out, and a file republished unchanged is no change.
+    old, new = routes_of(before), routes_of(routes)
+    published = (before.get(SOURCE_KEY) or {}).get("last_modified") or "unknown"
+    if not old:
+        print("first extract")
+    elif old == new:
+        print(
+            f"routes unchanged (published {published} -> {last_modified or 'unknown'})"
+        )
+    else:
+        gained = sorted(set(new) - set(old))
+        lost = sorted(set(old) - set(new))
+        print(
+            f"routes changed: {len(gained)} paths gained, {len(lost)} lost, "
+            "the rest compared as data"
+        )
 
 
 if __name__ == "__main__":

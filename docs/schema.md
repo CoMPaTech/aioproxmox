@@ -85,15 +85,16 @@ route, so the library does not have to name one from memory:
 ```python
 from aioproxmox.privileges import privileges_for
 
-check = privileges_for("GET", "nodes/pve/qemu/101/agent/get-fsinfo")
+check = privileges_for("POST", "nodes/pve/qemu/101/agent/ping")
 check.render()
 # ['perm','/vms/101',['VM.GuestAgent.Audit','VM.GuestAgent.Unrestricted'],'any',1]
 ```
 
 `required_privileges(method, template)` answers the same by route
 template; both hand back the alternatives that satisfy a route, since a
-check can offer a choice — the disk list takes `Sys.Audit` on `/` *or* on
-`/nodes/{node}`.
+check can offer a choice. Proxmox's disk list, for one, takes `Sys.Audit`
+on `/` *or* on `/nodes/{node}` — no route this library calls has that form
+yet, but the map carries it for whichever one does.
 
 `None` means the schema states no check. That is not "anyone may call
 it": several routes filter what they return by what the credentials can
@@ -102,8 +103,9 @@ requirement in prose instead — `vzdump` wants `VM.Backup` on the guests
 and `Datastore.AllocateSpace` on the storage, which the schema does not
 express.
 
-The data is generated into `aioproxmox/_privilege_data.py` — 39 routes,
-so no schema file has to ship with the library:
+The data is generated into `aioproxmox/_privilege_data.py` — one entry
+per route this library calls that states a check, so no schema file has to
+ship with the library:
 
 ```bash
 python script/generate_privileges.py
