@@ -79,8 +79,21 @@ def test_pve_permissions_absent_top_level_path():
     # Proxmox would list /vms if anything propagated to it
     assert perms.has_permission("/vms", "VM.PowerMgmt") is False
     assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
-    # /mapping is not always reported, so / still applies through it
-    assert perms.has_permission("/mapping/pci/gpu", "VM.PowerMgmt") is True
+    # / is the direct parent of /mapping, which is not always reported
+    assert perms.has_permission("/mapping", "VM.PowerMgmt") is True
+
+
+def test_pve_permissions_omitted_intermediate_path():
+    """Test grants are not inferred through an omitted intermediate path."""
+    perms = PVEPermissions.from_api_response(
+        {"/access": {"User.Modify": 1}, "/sdn/zones": {"SDN.Audit": 1}}
+    )
+
+    # /access/realm may be omitted because of a NoAccess ACL
+    assert perms.has_permission("/access/realm", "User.Modify") is True
+    assert perms.has_permission("/access/realm/foo", "User.Modify") is False
+    assert perms.has_permission("/sdn/zones/z1", "SDN.Audit") is True
+    assert perms.has_permission("/sdn/zones/z1/vnet1", "SDN.Audit") is False
 
 
 def test_pve_permissions_no_root():

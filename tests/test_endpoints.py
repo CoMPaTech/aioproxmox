@@ -306,7 +306,7 @@ async def test_access_permissions():
 async def test_access_permissions_for_path():
     """Test a single-path permission query is resolved but not cached."""
     client = MagicMock()
-    client.request = AsyncMock(return_value={})
+    client.request = AsyncMock(return_value={"/vms/101": {}})
     cached = client.permissions
 
     endpoint = AccessEndpoint(client)

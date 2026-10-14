@@ -49,23 +49,21 @@ class PVEPermissions:
         )
 
     def has_permission(self, path: str, privilege: str) -> bool:
-        """Check a privilege on the closest path Proxmox reported.
+        """Check a privilege on a path or its direct parent.
 
-        Proxmox omits paths with no effective privileges, so a NoAccess ACL on
-        an exact path is indistinguishable from a path without its own ACL.
-        Fetch that path with ``AccessEndpoint.permissions(path=...)`` when
-        this matters.
+        Proxmox omits paths with no effective privileges, so a NoAccess ACL is
+        indistinguishable from a path without its own ACL. Only the direct
+        parent is trusted for inheritance; fetch the path itself with
+        ``AccessEndpoint.permissions(path=...)`` when this matters.
         """
         path = path.rstrip("/") or "/"
         if (privs := self._perm_map.get(path)) is not None:
             return privilege in privs
+        if path in ALWAYS_REPORTED_PATHS:
+            return False
 
-        current = path
-        while current not in ALWAYS_REPORTED_PATHS:
-            current = current.rpartition("/")[0] or "/"
-            if (privs := self._perm_map.get(current)) is not None:
-                return privs.get(privilege, False)
-        return False
+        parent = path.rpartition("/")[0] or "/"
+        return self._perm_map.get(parent, {}).get(privilege, False)
 
     def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
         """Helper to check permissions for a specific VM ID."""
