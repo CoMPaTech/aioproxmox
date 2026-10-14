@@ -48,24 +48,39 @@ def test_pve_permissions_inheritance():
     perms = PVEPermissions.from_api_response(
         {
             "/": {"Sys.Audit": 1, "VM.Audit": 0},
-            "/vms": {"VM.PowerMgmt": 1},
-            "/vms/200": {},
+            "/nodes": {"Sys.Audit": 1},
+            "/vms": {"VM.PowerMgmt": 1, "VM.Snapshot": 0},
+            "/vms/200": {"VM.Audit": 1},
         }
     )
 
     # Inherited from /vms with propagate flag
     assert perms.has_vm_permission(101, "VM.PowerMgmt") is True
+    # Non-propagating privilege only applies on the exact path
+    assert perms.has_permission("/vms", "VM.Snapshot") is True
+    assert perms.has_vm_permission(101, "VM.Snapshot") is False
     # /vms is the closest match, so / is not consulted
     assert perms.has_vm_permission(101, "Sys.Audit") is False
-    # Empty path means nothing is granted there
+    # A deeper ACL replaces what /vms would propagate
     assert perms.has_vm_permission(200, "VM.PowerMgmt") is False
-    # Non-propagating privilege only applies on the exact path
+    assert perms.has_vm_permission(200, "VM.Audit") is True
     assert perms.has_permission("/", "VM.Audit") is True
     assert perms.has_node_permission("pve-01", "VM.Audit") is False
     assert perms.has_node_permission("pve-01", "Sys.Audit") is True
     # Trailing slashes are normalised
     assert perms.has_permission("/vms/", "VM.PowerMgmt") is True
     assert perms.has_permission("//", "Sys.Audit") is True
+
+
+def test_pve_permissions_absent_top_level_path():
+    """Test an absent always-reported path blocks inheritance from /."""
+    perms = PVEPermissions.from_api_response({"/": {"VM.PowerMgmt": 1}})
+
+    # Proxmox would list /vms if anything propagated to it
+    assert perms.has_permission("/vms", "VM.PowerMgmt") is False
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
+    # /mapping is not always reported, so / still applies through it
+    assert perms.has_permission("/mapping/pci/gpu", "VM.PowerMgmt") is True
 
 
 def test_pve_permissions_no_root():

@@ -2,6 +2,12 @@
 
 from dataclasses import dataclass, field
 
+# Paths Proxmox always evaluates for the whole-tree permissions response;
+# when one is absent, nothing is granted there or below via inheritance.
+ALWAYS_REPORTED_PATHS = frozenset(
+    {"/", "/access", "/access/groups", "/nodes", "/pool", "/sdn", "/storage", "/vms"}
+)
+
 
 @dataclass(slots=True)
 class PVECapabilities:
@@ -35,7 +41,6 @@ class PVEPermissions:
     @classmethod
     def from_api_response(cls, data: dict[str, dict[str, int]]) -> PVEPermissions:
         """Compile the raw access/permissions response."""
-        # Keep empty paths: they mean "nothing granted here"
         return cls(
             _perm_map={
                 path: {priv: bool(propagate) for priv, propagate in privs.items()}
@@ -44,17 +49,23 @@ class PVEPermissions:
         )
 
     def has_permission(self, path: str, privilege: str) -> bool:
-        """Check a privilege on the closest path Proxmox reported."""
+        """Check a privilege on the closest path Proxmox reported.
+
+        Proxmox omits paths with no effective privileges, so a NoAccess ACL on
+        an exact path is indistinguishable from a path without its own ACL.
+        Fetch that path with ``AccessEndpoint.permissions(path=...)`` when
+        this matters.
+        """
         path = path.rstrip("/") or "/"
+        if (privs := self._perm_map.get(path)) is not None:
+            return privilege in privs
+
         current = path
-        while True:
-            if (privs := self._perm_map.get(current)) is not None:
-                if current == path:
-                    return privilege in privs
-                return privs.get(privilege, False)
-            if current == "/":
-                return False
+        while current not in ALWAYS_REPORTED_PATHS:
             current = current.rpartition("/")[0] or "/"
+            if (privs := self._perm_map.get(current)) is not None:
+                return privs.get(privilege, False)
+        return False
 
     def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
         """Helper to check permissions for a specific VM ID."""
