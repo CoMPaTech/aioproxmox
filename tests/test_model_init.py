@@ -101,3 +101,16 @@ def test_pve_permissions_no_root():
     perms = PVEPermissions.from_api_response({"/vms/101": {"VM.Audit": 1}})
 
     assert perms.has_storage_permission("local", "Datastore.Audit") is False
+
+
+def test_pve_permissions_scoped():
+    """Test a path-scoped response does not answer for other paths."""
+    perms = PVEPermissions.from_api_response(
+        {"/vms/": {"VM.PowerMgmt": 1}}, scope="/vms/"
+    )
+
+    assert perms.has_permission("/vms", "VM.PowerMgmt") is True
+    assert perms.has_permission("/vms", "VM.Audit") is False
+    # /vms/101 may carry an overriding ACL the scoped query never evaluated
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
+    assert perms.has_permission("/", "VM.PowerMgmt") is False

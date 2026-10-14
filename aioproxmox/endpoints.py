@@ -351,13 +351,14 @@ class AccessEndpoint:
 
         Without ``path`` the whole tree is fetched and cached on the client.
         With ``path`` only that path is resolved, which also reflects a NoAccess
-        ACL the whole-tree response cannot show; the result is not cached.
+        ACL the whole-tree response cannot show; the result is not cached and
+        only answers for that exact path.
         """
         if path is not None:
             raw = await self.client.request(
                 "GET", "access/permissions", params={"path": path}
             )
-            return PVEPermissions.from_api_response(raw)
+            return PVEPermissions.from_api_response(raw, scope=path)
 
         raw = await self.client.request("GET", "access/permissions")
         self.client.permissions = PVEPermissions.from_api_response(raw)

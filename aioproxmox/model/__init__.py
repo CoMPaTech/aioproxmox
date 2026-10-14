@@ -9,6 +9,11 @@ ALWAYS_REPORTED_PATHS = frozenset(
 )
 
 
+def _normalize(path: str) -> str:
+    """Strip trailing slashes from an ACL path."""
+    return path.rstrip("/") or "/"
+
+
 @dataclass(slots=True)
 class PVECapabilities:
     """Strongly-typed evaluation mapping of active ProxmoxVE user session permissions."""
@@ -37,15 +42,22 @@ class PVEPermissions:
     # path -> {privilege: whether it propagates to child paths}
     # Example: {"/vms/101": {"VM.Audit", "VM.PowerMgmt"}}
     _perm_map: dict[str, dict[str, bool]] = field(default_factory=dict)
+    # Set for a path-scoped response, which only resolves that single path
+    _scope: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, dict[str, int]]) -> PVEPermissions:
+    def from_api_response(
+        cls, data: dict[str, dict[str, int]], scope: str | None = None
+    ) -> PVEPermissions:
         """Compile the raw access/permissions response."""
         return cls(
             _perm_map={
-                path: {priv: bool(propagate) for priv, propagate in privs.items()}
+                _normalize(path): {
+                    priv: bool(propagate) for priv, propagate in privs.items()
+                }
                 for path, privs in data.items()
-            }
+            },
+            _scope=None if scope is None else _normalize(scope),
         )
 
     def has_permission(self, path: str, privilege: str) -> bool:
@@ -54,9 +66,12 @@ class PVEPermissions:
         Proxmox omits paths with no effective privileges, so a NoAccess ACL is
         indistinguishable from a path without its own ACL. Only the direct
         parent is trusted for inheritance; fetch the path itself with
-        ``AccessEndpoint.permissions(path=...)`` when this matters.
+        ``AccessEndpoint.permissions(path=...)`` when this matters. Such a
+        path-scoped result only answers for that exact path.
         """
-        path = path.rstrip("/") or "/"
+        path = _normalize(path)
+        if self._scope is not None:
+            return path == self._scope and privilege in self._perm_map.get(path, {})
         if (privs := self._perm_map.get(path)) is not None:
             return privilege in privs
         if path in ALWAYS_REPORTED_PATHS:

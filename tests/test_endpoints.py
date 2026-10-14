@@ -321,6 +321,19 @@ async def test_access_permissions_for_path():
 
 
 @pytest.mark.asyncio
+async def test_access_permissions_for_parent_path():
+    """Test a scoped parent query does not grant for its children."""
+    client = MagicMock()
+    client.request = AsyncMock(return_value={"/vms": {"VM.PowerMgmt": 1}})
+
+    endpoint = AccessEndpoint(client)
+    perms = await endpoint.permissions(path="/vms")
+
+    assert perms.has_permission("/vms", "VM.PowerMgmt") is True
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
+
+
+@pytest.mark.asyncio
 async def test_tasks_endpoint(mock_cluster_backup_tasks):
     """Test task history retrieval with parameters."""
     client = MagicMock()
