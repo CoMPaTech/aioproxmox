@@ -2,6 +2,17 @@
 
 from dataclasses import dataclass, field
 
+# Paths Proxmox always evaluates for the whole-tree permissions response;
+# when one is absent, nothing is granted there or below via inheritance.
+ALWAYS_REPORTED_PATHS = frozenset(
+    {"/", "/access", "/access/groups", "/nodes", "/pool", "/sdn", "/storage", "/vms"}
+)
+
+
+def _normalize(path: str) -> str:
+    """Strip trailing slashes from an ACL path."""
+    return path.rstrip("/") or "/"
+
 
 @dataclass(slots=True)
 class PVECapabilities:
@@ -31,30 +42,43 @@ class PVEPermissions:
     # path -> {privilege: whether it propagates to child paths}
     # Example: {"/vms/101": {"VM.Audit", "VM.PowerMgmt"}}
     _perm_map: dict[str, dict[str, bool]] = field(default_factory=dict)
+    # Set for a path-scoped response, which only resolves that single path
+    _scope: str | None = None
 
     @classmethod
-    def from_api_response(cls, data: dict[str, dict[str, int]]) -> PVEPermissions:
+    def from_api_response(
+        cls, data: dict[str, dict[str, int]], scope: str | None = None
+    ) -> PVEPermissions:
         """Compile the raw access/permissions response."""
-        # Keep empty paths: they mean "nothing granted here"
         return cls(
             _perm_map={
-                path: {priv: bool(propagate) for priv, propagate in privs.items()}
+                _normalize(path): {
+                    priv: bool(propagate) for priv, propagate in privs.items()
+                }
                 for path, privs in data.items()
-            }
+            },
+            _scope=None if scope is None else _normalize(scope),
         )
 
     def has_permission(self, path: str, privilege: str) -> bool:
-        """Check a privilege on the closest path Proxmox reported."""
-        path = path.rstrip("/") or "/"
-        current = path
-        while True:
-            if (privs := self._perm_map.get(current)) is not None:
-                if current == path:
-                    return privilege in privs
-                return privs.get(privilege, False)
-            if current == "/":
-                return False
-            current = current.rpartition("/")[0] or "/"
+        """Check a privilege on a path or its direct parent.
+
+        Proxmox omits paths with no effective privileges, so a NoAccess ACL is
+        indistinguishable from a path without its own ACL. Only the direct
+        parent is trusted for inheritance; fetch the path itself with
+        ``AccessEndpoint.permissions(path=...)`` when this matters. Such a
+        path-scoped result only answers for that exact path.
+        """
+        path = _normalize(path)
+        if self._scope is not None:
+            return path == self._scope and privilege in self._perm_map.get(path, {})
+        if (privs := self._perm_map.get(path)) is not None:
+            return privilege in privs
+        if path in ALWAYS_REPORTED_PATHS:
+            return False
+
+        parent = path.rpartition("/")[0] or "/"
+        return self._perm_map.get(parent, {}).get(privilege, False)
 
     def has_vm_permission(self, vmid: int | str, privilege: str) -> bool:
         """Helper to check permissions for a specific VM ID."""

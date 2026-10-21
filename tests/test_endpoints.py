@@ -303,6 +303,37 @@ async def test_access_permissions():
 
 
 @pytest.mark.asyncio
+async def test_access_permissions_for_path():
+    """Test a single-path permission query is resolved but not cached."""
+    client = MagicMock()
+    client.request = AsyncMock(return_value={"/vms/101": {}})
+    cached = client.permissions
+
+    endpoint = AccessEndpoint(client)
+    perms = await endpoint.permissions(path="/vms/101")
+
+    client.request.assert_called_once_with(
+        "GET", "access/permissions", params={"path": "/vms/101"}
+    )
+    # NoAccess on /vms/101 yields an empty response
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
+    assert client.permissions is cached
+
+
+@pytest.mark.asyncio
+async def test_access_permissions_for_parent_path():
+    """Test a scoped parent query does not grant for its children."""
+    client = MagicMock()
+    client.request = AsyncMock(return_value={"/vms": {"VM.PowerMgmt": 1}})
+
+    endpoint = AccessEndpoint(client)
+    perms = await endpoint.permissions(path="/vms")
+
+    assert perms.has_permission("/vms", "VM.PowerMgmt") is True
+    assert perms.has_vm_permission(101, "VM.PowerMgmt") is False
+
+
+@pytest.mark.asyncio
 async def test_tasks_endpoint(mock_cluster_backup_tasks):
     """Test task history retrieval with parameters."""
     client = MagicMock()
