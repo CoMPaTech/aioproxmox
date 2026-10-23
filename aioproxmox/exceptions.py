@@ -21,3 +21,15 @@ class ProxmoxAPIError(ProxmoxError):
 
 class ResourceNotFoundError(ProxmoxError):
     """Target VMID, LXC, Node, or Storage could not be found."""
+
+
+class ProxmoxConnectionError(ProxmoxError):
+    """The PVE API could not be reached or the connection failed."""
+
+
+class ProxmoxSSLError(ProxmoxConnectionError):
+    """The TLS handshake or certificate verification failed."""
+
+
+class ProxmoxTimeoutError(ProxmoxConnectionError):
+    """The request to the PVE API timed out."""

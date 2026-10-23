@@ -8,7 +8,13 @@ import pytest
 
 from aioproxmox import ProxmoxHTTPApiTokenAuth, ProxmoxHTTPAuth, ProxmoxVE
 from aioproxmox.endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
+from aioproxmox.exceptions import (
+    ProxmoxAPIError,
+    ProxmoxAuthError,
+    ProxmoxConnectionError,
+    ProxmoxSSLError,
+    ProxmoxTimeoutError,
+)
 
 
 @pytest.mark.asyncio
@@ -315,3 +321,92 @@ async def test_http_auth_ticket_tfa_error_status(status, expected):
     with pytest.raises(expected):
         await auth.async_init()
     mock_resp2.json.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("host", "base_url"),
+    [
+        ("127.0.0.1", "https://127.0.0.1:8006/api2/json"),
+        ("127.0.0.1:8007", "https://127.0.0.1:8006/api2/json"),
+        ("pve.local", "https://pve.local:8006/api2/json"),
+        ("pve.local:8007", "https://pve.local:8006/api2/json"),
+        ("2001:db8::1", "https://[2001:db8::1]:8006/api2/json"),
+        ("::1", "https://[::1]:8006/api2/json"),
+        ("[2001:db8::1]", "https://[2001:db8::1]:8006/api2/json"),
+        ("[2001:db8::1]:8007", "https://[2001:db8::1]:8006/api2/json"),
+    ],
+)
+def test_proxmox_ve_host_parsing(host, base_url):
+    """Test the host is turned into a valid base URL, IPv6 included."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    pve = ProxmoxVE(
+        session=session,
+        host=host,
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+    assert pve.base_url == base_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            aiohttp.ClientSSLError(MagicMock(), OSError("ssl error")),
+            ProxmoxSSLError,
+        ),
+        (TimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ServerTimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ClientConnectionError("refused"), ProxmoxConnectionError),
+        (aiohttp.ClientPayloadError("truncated"), ProxmoxConnectionError),
+    ],
+)
+async def test_request_client_errors(error, expected):
+    """Test aiohttp errors from a request are raised as aioproxmox errors."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    session.request.return_value.__aenter__.side_effect = error
+
+    pve = ProxmoxVE(
+        session=session,
+        host="127.0.0.1",
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+
+    with pytest.raises(expected) as exc_info:
+        await pve.request("GET", "nodes")
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            aiohttp.ClientSSLError(MagicMock(), OSError("ssl error")),
+            ProxmoxSSLError,
+        ),
+        (TimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ClientConnectionError("refused"), ProxmoxConnectionError),
+    ],
+)
+async def test_http_auth_ticket_client_errors(error, expected):
+    """Test aiohttp errors while fetching or refreshing a ticket are translated."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    session.post.return_value.__aenter__.side_effect = error
+
+    pve = ProxmoxVE(
+        session=session, host="127.0.0.1", user="root@pam", password="secret"
+    )
+
+    with pytest.raises(expected):
+        await pve.auth.async_init()
+
+    # A refresh happens inside request, before the request itself is sent
+    pve.auth.birth_time = time.monotonic() - pve.auth.renew_age
+    with pytest.raises(expected):
+        await pve.request("GET", "nodes")
+    session.request.assert_not_called()
