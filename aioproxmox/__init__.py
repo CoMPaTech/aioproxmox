@@ -14,6 +14,7 @@ from .exceptions import (
     ProxmoxAPIError,
     ProxmoxAuthError,
     ProxmoxConnectionError,
+    ProxmoxResponseError,
     ProxmoxSSLError,
     ProxmoxTimeoutError,
 )
@@ -39,6 +40,19 @@ def _translate_client_errors(url: str) -> Iterator[None]:
         raise ProxmoxTimeoutError(f"Timeout connecting to {url}") from err
     except aiohttp.ClientError as err:
         raise ProxmoxConnectionError(f"Error connecting to {url}: {err}") from err
+
+
+async def _read_json(response: aiohttp.ClientResponse, endpoint: str) -> Any:
+    """Decode a JSON body, raising a response that is not JSON as an API error."""
+    try:
+        return await response.json()
+    except aiohttp.ContentTypeError as err:
+        raise ProxmoxResponseError(response.status, err.message, endpoint) from err
+    except ValueError as err:
+        # JSONDecodeError, or UnicodeDecodeError for a body that isn't text
+        raise ProxmoxResponseError(
+            response.status, f"Invalid JSON: {err}", endpoint
+        ) from err
 
 
 def _normalize_host(host: str) -> str:
@@ -143,7 +157,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                 raise ProxmoxAPIError(
                     response.status, await response.text(), "access/ticket"
                 )
-            res_json = await response.json()
+            res_json = await _read_json(response, "access/ticket")
             response_data = res_json["data"]
 
             self.birth_time = time.monotonic()
@@ -174,7 +188,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                         raise ProxmoxAPIError(
                             otpresp.status, await otpresp.text(), "access/ticket"
                         )
-                    otp_json = await otpresp.json()
+                    otp_json = await _read_json(otpresp, "access/ticket")
                     otpresp_data = otp_json.get("data")
                 if not otpresp_data:
                     raise ProxmoxAuthError(
@@ -341,7 +355,7 @@ class ProxmoxVE:
                         message = f"{reason}: {text}"
                     raise ProxmoxAPIError(response.status, message, path)
 
-                payload = await response.json()
+                payload = await _read_json(response, path)
                 # A read answers with an object or a list; a command answers
                 # with the task id it queued, which is a string. Turning
                 # anything else into `{}` dropped exactly that - every

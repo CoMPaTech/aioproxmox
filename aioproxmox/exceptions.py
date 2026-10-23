@@ -10,13 +10,17 @@ class ProxmoxAuthError(ProxmoxError):
 
 
 class ProxmoxAPIError(ProxmoxError):
-    """PVE API returned a non-200 HTTP status code."""
+    """PVE API returned an error status or a response that could not be read."""
 
     def __init__(self, status: int, message: str, endpoint: str) -> None:
         """Format error string."""
         super().__init__(f"PVE API Error {status} at {endpoint}: {message}")
         self.status = status
         self.endpoint = endpoint
+
+
+class ProxmoxResponseError(ProxmoxAPIError):
+    """PVE API answered, but not with the JSON it should have."""
 
 
 class ResourceNotFoundError(ProxmoxError):
