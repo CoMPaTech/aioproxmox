@@ -1,5 +1,7 @@
 """Proxmox Home Assistant Integration Service."""
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 import logging
 import time
 from typing import Any
@@ -8,7 +10,14 @@ import aiohttp
 
 from .const import DEFAULT_PVE_PORT
 from .endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from .exceptions import ProxmoxAPIError, ProxmoxAuthError
+from .exceptions import (
+    ProxmoxAPIError,
+    ProxmoxAuthError,
+    ProxmoxConnectionError,
+    ProxmoxResponseError,
+    ProxmoxSSLError,
+    ProxmoxTimeoutError,
+)
 from .model import PVECapabilities, PVEPermissions
 from .model.pve import ClusterCache, ClusterResourcesCollection
 
@@ -18,6 +27,47 @@ SERVICES: dict[str, dict[str, Any]] = {
     "PVE": {"default_port": DEFAULT_PVE_PORT, "token_separator": "="}
     # Future PDM, PBS
 }
+
+
+@contextmanager
+def _translate_client_errors(url: str) -> Iterator[None]:
+    """Raise transport failures as aioproxmox errors instead of aiohttp ones."""
+    try:
+        yield
+    except aiohttp.ClientSSLError as err:
+        raise ProxmoxSSLError(f"SSL error connecting to {url}: {err}") from err
+    except TimeoutError as err:
+        raise ProxmoxTimeoutError(f"Timeout connecting to {url}") from err
+    except aiohttp.ClientError as err:
+        raise ProxmoxConnectionError(f"Error connecting to {url}: {err}") from err
+
+
+async def _read_json(response: aiohttp.ClientResponse, endpoint: str) -> Any:
+    """Decode a JSON body, raising a response that is not JSON as an API error."""
+    try:
+        return await response.json()
+    except aiohttp.ContentTypeError as err:
+        raise ProxmoxResponseError(response.status, err.message, endpoint) from err
+    except ValueError as err:
+        # JSONDecodeError, or UnicodeDecodeError for a body that isn't text
+        raise ProxmoxResponseError(
+            response.status, f"Invalid JSON: {err}", endpoint
+        ) from err
+
+
+def _normalize_host(host: str) -> str:
+    """Strip a trailing port from the host and bracket IPv6 addresses for URLs."""
+    if host.startswith("["):
+        # "[2001:db8::1]" or "[2001:db8::1]:8006"
+        end = host.find("]")
+        return host[: end + 1] if end != -1 else host
+    if host.count(":") == 1:
+        # "pve.local:8006" or "192.0.2.1:8006"
+        return host.split(":", 1)[0]
+    if ":" in host:
+        # Bare IPv6 address such as "2001:db8::1" or "::1"
+        return f"[{host}]"
+    return host
 
 
 class ProxmoxHTTPAuthBase:
@@ -76,9 +126,10 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
 
     async def async_init(self) -> Any:
         """Initial token acquisition loop."""
-        await self._get_new_tokens(
-            password=self.password, otp=self.otp, otptype=self.otptype
-        )
+        with _translate_client_errors(self.base_url):
+            await self._get_new_tokens(
+                password=self.password, otp=self.otp, otptype=self.otptype
+            )
         return self
 
     async def _get_new_tokens(
@@ -106,7 +157,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                 raise ProxmoxAPIError(
                     response.status, await response.text(), "access/ticket"
                 )
-            res_json = await response.json()
+            res_json = await _read_json(response, "access/ticket")
             response_data = res_json["data"]
 
             self.birth_time = time.monotonic()
@@ -137,7 +188,7 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
                         raise ProxmoxAPIError(
                             otpresp.status, await otpresp.text(), "access/ticket"
                         )
-                    otp_json = await otpresp.json()
+                    otp_json = await _read_json(otpresp, "access/ticket")
                     otpresp_data = otp_json.get("data")
                 if not otpresp_data:
                     raise ProxmoxAuthError(
@@ -207,9 +258,7 @@ class ProxmoxVE:
         service: str = "PVE",
     ) -> None:
         """HTTPS Backend for Proxmox Virtualisation Engine."""
-        if ":" in host and not host.startswith("["):
-            # Clean up base IPv4 parsing strings; ignore legacy bracket rules
-            host, _ = host.split(":", 1)
+        host = _normalize_host(host)
 
         if not port:
             port = int(SERVICES[service]["default_port"])
@@ -254,7 +303,9 @@ class ProxmoxVE:
         params: dict[str, Any] | None = None,
     ) -> Any:
         """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
-        await self.auth.check_and_refresh(method=method)
+        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
+        with _translate_client_errors(url):
+            await self.auth.check_and_refresh(method=method)
 
         headers: dict[str, str] = {
             "Accept": "application/json",
@@ -278,39 +329,39 @@ class ProxmoxVE:
         elif json_data:
             request_kwargs["json"] = json_data
 
-        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
         timeout = aiohttp.ClientTimeout(total=self.timeout)
 
-        async with self.auth.session.request(
-            method=method,
-            url=url,
-            headers=headers,
-            timeout=timeout,
-            ssl=self.verify_ssl,
-            **request_kwargs,
-        ) as response:
-            if response.status not in (200, 201):
-                # Proxmox puts what went wrong into the HTTP reason phrase -
-                # "Permission check failed (/nodes/pve, Sys.PowerMgmt)" - and
-                # answers with a body of `{"data":null}`. Keeping the body
-                # alone left the caller with nothing to report, so keep the
-                # reason, and the body where it says more.
-                text = (await response.text()).strip()
-                reason = response.reason if isinstance(response.reason, str) else ""
-                message = text
-                if not text or text.replace(" ", "") == '{"data":null}':
-                    message = reason
-                elif reason and reason not in text:
-                    message = f"{reason}: {text}"
-                raise ProxmoxAPIError(response.status, message, path)
+        with _translate_client_errors(url):
+            async with self.auth.session.request(
+                method=method,
+                url=url,
+                headers=headers,
+                timeout=timeout,
+                ssl=self.verify_ssl,
+                **request_kwargs,
+            ) as response:
+                if response.status not in (200, 201):
+                    # Proxmox puts what went wrong into the HTTP reason phrase -
+                    # "Permission check failed (/nodes/pve, Sys.PowerMgmt)" - and
+                    # answers with a body of `{"data":null}`. Keeping the body
+                    # alone left the caller with nothing to report, so keep the
+                    # reason, and the body where it says more.
+                    text = (await response.text()).strip()
+                    reason = response.reason if isinstance(response.reason, str) else ""
+                    message = text
+                    if not text or text.replace(" ", "") == '{"data":null}':
+                        message = reason
+                    elif reason and reason not in text:
+                        message = f"{reason}: {text}"
+                    raise ProxmoxAPIError(response.status, message, path)
 
-            payload = await response.json()
-            # A read answers with an object or a list; a command answers
-            # with the task id it queued, which is a string. Turning
-            # anything else into `{}` dropped exactly that - every
-            # `start`, `stop` or `vzdump` came back as if it had said
-            # nothing. Hand back what Proxmox said.
-            return payload.get("data") if isinstance(payload, dict) else payload
+                payload = await _read_json(response, path)
+                # A read answers with an object or a list; a command answers
+                # with the task id it queued, which is a string. Turning
+                # anything else into `{}` dropped exactly that - every
+                # `start`, `stop` or `vzdump` came back as if it had said
+                # nothing. Hand back what Proxmox said.
+                return payload.get("data") if isinstance(payload, dict) else payload
 
     @property
     def cluster(self) -> ClusterEndpoint:

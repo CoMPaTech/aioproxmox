@@ -1,5 +1,6 @@
 """Test basic aiohttp."""
 
+import json
 import time
 from unittest.mock import AsyncMock, MagicMock
 
@@ -8,7 +9,14 @@ import pytest
 
 from aioproxmox import ProxmoxHTTPApiTokenAuth, ProxmoxHTTPAuth, ProxmoxVE
 from aioproxmox.endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
-from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxAuthError
+from aioproxmox.exceptions import (
+    ProxmoxAPIError,
+    ProxmoxAuthError,
+    ProxmoxConnectionError,
+    ProxmoxResponseError,
+    ProxmoxSSLError,
+    ProxmoxTimeoutError,
+)
 
 
 @pytest.mark.asyncio
@@ -315,3 +323,183 @@ async def test_http_auth_ticket_tfa_error_status(status, expected):
     with pytest.raises(expected):
         await auth.async_init()
     mock_resp2.json.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("host", "base_url"),
+    [
+        ("127.0.0.1", "https://127.0.0.1:8006/api2/json"),
+        ("127.0.0.1:8007", "https://127.0.0.1:8006/api2/json"),
+        ("pve.local", "https://pve.local:8006/api2/json"),
+        ("pve.local:8007", "https://pve.local:8006/api2/json"),
+        ("2001:db8::1", "https://[2001:db8::1]:8006/api2/json"),
+        ("::1", "https://[::1]:8006/api2/json"),
+        ("[2001:db8::1]", "https://[2001:db8::1]:8006/api2/json"),
+        ("[2001:db8::1]:8007", "https://[2001:db8::1]:8006/api2/json"),
+    ],
+)
+def test_proxmox_ve_host_parsing(host, base_url):
+    """Test the host is turned into a valid base URL, IPv6 included."""
+    session = MagicMock(spec=aiohttp.ClientSession)
+    pve = ProxmoxVE(
+        session=session,
+        host=host,
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+    assert pve.base_url == base_url
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            aiohttp.ClientSSLError(MagicMock(), OSError("ssl error")),
+            ProxmoxSSLError,
+        ),
+        (TimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ServerTimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ClientConnectionError("refused"), ProxmoxConnectionError),
+        (aiohttp.ClientPayloadError("truncated"), ProxmoxConnectionError),
+    ],
+)
+async def test_request_client_errors(error, expected):
+    """Test aiohttp errors from a request are raised as aioproxmox errors."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    session.request.return_value.__aenter__.side_effect = error
+
+    pve = ProxmoxVE(
+        session=session,
+        host="127.0.0.1",
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+
+    with pytest.raises(expected) as exc_info:
+        await pve.request("GET", "nodes")
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("error", "expected"),
+    [
+        (
+            aiohttp.ClientSSLError(MagicMock(), OSError("ssl error")),
+            ProxmoxSSLError,
+        ),
+        (TimeoutError(), ProxmoxTimeoutError),
+        (aiohttp.ClientConnectionError("refused"), ProxmoxConnectionError),
+    ],
+)
+async def test_http_auth_ticket_client_errors(error, expected):
+    """Test aiohttp errors while fetching or refreshing a ticket are translated."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    session.post.return_value.__aenter__.side_effect = error
+
+    pve = ProxmoxVE(
+        session=session, host="127.0.0.1", user="root@pam", password="secret"
+    )
+
+    with pytest.raises(expected):
+        await pve.auth.async_init()
+
+    # A refresh happens inside request, before the request itself is sent
+    pve.auth.birth_time = time.monotonic() - pve.auth.renew_age
+    with pytest.raises(expected):
+        await pve.request("GET", "nodes")
+    session.request.assert_not_called()
+
+
+FORMAT_ERRORS = [
+    pytest.param(
+        aiohttp.ContentTypeError(
+            MagicMock(),
+            (),
+            message="Attempt to decode JSON with unexpected mimetype: text/html",
+        ),
+        "unexpected mimetype: text/html",
+        id="content_type",
+    ),
+    pytest.param(
+        json.JSONDecodeError("Expecting value", "<html>", 0),
+        "Invalid JSON: Expecting value",
+        id="invalid_json",
+    ),
+]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "message"), FORMAT_ERRORS)
+async def test_request_unreadable_response(error, message):
+    """Test a 200 that is not JSON is an API error, not a connection error."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json.side_effect = error
+    session.request.return_value.__aenter__.return_value = mock_resp
+
+    pve = ProxmoxVE(
+        session=session,
+        host="127.0.0.1",
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+
+    with pytest.raises(ProxmoxResponseError, match=message) as exc_info:
+        await pve.request("GET", "nodes")
+    assert isinstance(exc_info.value, ProxmoxAPIError)
+    assert not isinstance(exc_info.value, ProxmoxConnectionError)
+    assert exc_info.value.status == 200
+    assert exc_info.value.endpoint == "nodes"
+    assert exc_info.value.__cause__ is error
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "message"), FORMAT_ERRORS)
+async def test_http_auth_ticket_unreadable_response(error, message):
+    """Test a ticket answer that is not JSON is an API error."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    mock_resp = AsyncMock()
+    mock_resp.status = 200
+    mock_resp.json.side_effect = error
+    session.post.return_value.__aenter__.return_value = mock_resp
+
+    auth = ProxmoxHTTPAuth(
+        "root@pam", "password", base_url="https://mock", session=session
+    )
+
+    with pytest.raises(ProxmoxResponseError, match=message) as exc_info:
+        await auth.async_init()
+    assert exc_info.value.endpoint == "access/ticket"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(("error", "message"), FORMAT_ERRORS)
+async def test_http_auth_ticket_tfa_unreadable_response(error, message):
+    """Test a TFA answer that is not JSON is an API error."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    first_resp = AsyncMock()
+    first_resp.status = 200
+    first_resp.json.return_value = {
+        "data": {
+            "ticket": "PVE:root@pam:mock_ticket",
+            "CSRFPreventionToken": "mock_csrf",
+            "NeedTFA": 1,
+        }
+    }
+    otp_resp = AsyncMock()
+    otp_resp.status = 200
+    otp_resp.json.side_effect = error
+    session.post.return_value.__aenter__.side_effect = [first_resp, otp_resp]
+
+    auth = ProxmoxHTTPAuth(
+        "root@pam", "password", otp=True, base_url="https://mock", session=session
+    )
+
+    with pytest.raises(ProxmoxResponseError, match=message):
+        await auth.async_init()
