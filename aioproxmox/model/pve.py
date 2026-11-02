@@ -555,6 +555,26 @@ class ClusterResourcesCollection(ProxmoxVEDataClass):
         """Provide iteration."""
         return iter(self.resources)
 
+    @property
+    def nodes(self) -> list[ClusterNodeResource]:
+        """Return the node resources."""
+        return [r for r in self.resources if isinstance(r, ClusterNodeResource)]
+
+    @property
+    def qemu(self) -> list[ClusterQemuResource]:
+        """Return the QEMU virtual machine resources."""
+        return [r for r in self.resources if isinstance(r, ClusterQemuResource)]
+
+    @property
+    def lxc(self) -> list[ClusterContainerResource]:
+        """Return the LXC container resources."""
+        return [r for r in self.resources if isinstance(r, ClusterContainerResource)]
+
+    @property
+    def storage(self) -> list[ClusterStorageResource]:
+        """Return the storage resources."""
+        return [r for r in self.resources if isinstance(r, ClusterStorageResource)]
+
 
 @dataclass(slots=True)
 class ClusterCache:
