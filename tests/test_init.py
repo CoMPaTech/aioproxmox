@@ -68,6 +68,27 @@ async def test_request_error_handling():
 
 
 @pytest.mark.asyncio
+async def test_request_unauthorized():
+    """Test a rejected API token raises an auth error, not an API error."""
+    session = AsyncMock(spec=aiohttp.ClientSession)
+    mock_resp = AsyncMock()
+    mock_resp.status = 401
+    session.request.return_value.__aenter__.return_value = mock_resp
+
+    pve = ProxmoxVE(
+        session=session,
+        host="127.0.0.1",
+        user="root@pam",
+        token_name="test",
+        token_value="secret",
+    )
+
+    with pytest.raises(ProxmoxAuthError, match="Couldn't authenticate to .*/nodes"):
+        await pve.request("GET", "nodes")
+    mock_resp.text.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_http_auth_ticket_success():
     """Test basic username and password authentication via ticket."""
     session = AsyncMock(spec=aiohttp.ClientSession)

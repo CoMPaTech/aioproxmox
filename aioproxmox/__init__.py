@@ -340,6 +340,12 @@ class ProxmoxVE:
                 ssl=self.verify_ssl,
                 **request_kwargs,
             ) as response:
+                if response.status == 401:
+                    # A rejected API token or an expired ticket - the
+                    # credentials are the problem, not the request
+                    raise ProxmoxAuthError(
+                        f"Couldn't authenticate to {url}: Code {response.status}"
+                    )
                 if response.status not in (200, 201):
                     # Proxmox puts what went wrong into the HTTP reason phrase -
                     # "Permission check failed (/nodes/pve, Sys.PowerMgmt)" - and
