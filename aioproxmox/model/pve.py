@@ -40,6 +40,9 @@ class ResourceType(StrEnum):
     LXC = "lxc"
     STORAGE = "storage"
     NETWORK = "network"
+    POOL = "pool"
+    SDN = "sdn"
+    OPENVZ = "openvz"
     UNKNOWN = "unknown"
 
     @classmethod
@@ -528,6 +531,8 @@ def deserialize_resource_list(value: Any) -> list[Any]:
                     parsed_items.append(ClusterStorageResource.from_dict(item))
                 case "network":
                     parsed_items.append(ClusterNetworkResource.from_dict(item))
+                case "pool" | "sdn" | "openvz":
+                    continue
                 case _:
                     _LOGGER.warning("Skipping unknown Proxmox resource type: %r", kind)
         except Exception:
