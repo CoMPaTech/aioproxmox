@@ -14,6 +14,7 @@ from .exceptions import (
     ProxmoxAPIError,
     ProxmoxAuthError,
     ProxmoxConnectionError,
+    ProxmoxNodeUnreachableError,
     ProxmoxResponseError,
     ProxmoxSSLError,
     ProxmoxTimeoutError,
@@ -22,6 +23,8 @@ from .model import PVECapabilities, PVEPermissions
 from .model.pve import ClusterCache, ClusterResourcesCollection
 
 _LOGGER = logging.getLogger(__name__)
+
+NODE_UNREACHABLE_STATUSES = frozenset({595, 596})
 
 SERVICES: dict[str, dict[str, Any]] = {
     "PVE": {"default_port": DEFAULT_PVE_PORT, "token_separator": "="}
@@ -359,6 +362,10 @@ class ProxmoxVE:
                         message = reason
                     elif reason and reason not in text:
                         message = f"{reason}: {text}"
+                    if response.status in NODE_UNREACHABLE_STATUSES:
+                        raise ProxmoxNodeUnreachableError(
+                            response.status, message, path
+                        )
                     raise ProxmoxAPIError(response.status, message, path)
 
                 payload = await _read_json(response, path)
