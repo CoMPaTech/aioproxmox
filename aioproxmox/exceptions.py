@@ -19,6 +19,14 @@ class ProxmoxAPIError(ProxmoxError):
         self.endpoint = endpoint
 
 
+class ProxmoxNodeUnreachableError(ProxmoxAPIError):
+    """The node answering could not reach the node the request was for.
+
+    pveproxy answers 595 when it cannot connect to the other cluster node and
+    596 when that connection times out or its TLS fails.
+    """
+
+
 class ProxmoxResponseError(ProxmoxAPIError):
     """PVE API answered, but not with the JSON it should have."""
 
