@@ -1,5 +1,6 @@
 """Proxmox Home Assistant Integration Service."""
 
+import asyncio
 from collections.abc import Iterator
 from contextlib import contextmanager
 import logging
@@ -8,12 +9,13 @@ from typing import Any
 
 import aiohttp
 
-from .const import DEFAULT_PVE_PORT
+from .const import DEFAULT_PVE_PORT, PROBE_TIMEOUT
 from .endpoints import AccessEndpoint, ClusterEndpoint, NodeEndpoint
 from .exceptions import (
     ProxmoxAPIError,
     ProxmoxAuthError,
     ProxmoxConnectionError,
+    ProxmoxError,
     ProxmoxNodeUnreachableError,
     ProxmoxResponseError,
     ProxmoxSSLError,
@@ -89,6 +91,8 @@ class ProxmoxHTTPAuthBase:
         self.service = service
         self.verify_ssl = verify_ssl
         self.capabilities: PVECapabilities
+        # Where the API answers; the client points it at another host on failover.
+        self.base_url: str = ""
 
     def get_cookies(self) -> dict[str, str]:
         """Return cookies."""
@@ -212,11 +216,27 @@ class ProxmoxHTTPAuth(ProxmoxHTTPAuthBase):
         return {"CSRFPreventionToken": self.csrf_prevention_token}
 
     async def check_and_refresh(self, method: str) -> None:
-        """Asynchronously refresh credentials if required before a request."""
+        """Asynchronously refresh credentials if required before a request.
+
+        A ticket renews itself for as long as it is valid - two hours. After
+        a host has been unreachable longer than that, the renewal is refused
+        exactly like a wrong password would be; the password is still here,
+        so log in again with it before giving up.
+        """
         time_diff = time.monotonic() - self.birth_time
         if time_diff >= self.renew_age:
             _LOGGER.debug("Refreshing ticket (age %s)", time_diff)
-            await self._get_new_tokens()
+            try:
+                await self._get_new_tokens()
+            except ProxmoxAuthError:
+                _LOGGER.debug("Ticket renewal refused, logging in again")
+                await self.relogin()
+
+    async def relogin(self) -> None:
+        """Log in again with the stored password, replacing ticket and CSRF token."""
+        await self._get_new_tokens(
+            password=self.password, otp=self.otp, otptype=self.otptype
+        )
 
 
 class ProxmoxHTTPApiTokenAuth(ProxmoxHTTPAuthBase):
@@ -268,6 +288,12 @@ class ProxmoxVE:
 
         self.auth: ProxmoxHTTPAuthBase
         self.base_url = f"https://{host}:{port}/api2/json"
+        # The configured host first, then whatever the cluster says its other
+        # nodes answer on. Only the first is ever written anywhere.
+        self._hosts: list[str] = [host]
+        self._host_index = 0
+        self._port = port
+        self._switch_lock = asyncio.Lock()
         self.verify_ssl = verify_ssl
         self.timeout = timeout
         self.permissions = PVEPermissions()
@@ -298,6 +324,144 @@ class ProxmoxVE:
             await self.auth.async_init()
         return await self.cluster.resources()
 
+    def learn_hosts(self, hosts: list[str], *, replace: bool = False) -> None:
+        """Remember other nodes of the cluster as places to fall back to.
+
+        `cluster/status` says what address every node answers on. That is
+        the corosync address, which on a cluster with a separate cluster
+        network is not reachable from outside - so these are tried, not
+        relied on. The configured host stays first and is used again after
+        a reconnect.
+
+        `replace` is for a caller holding a fresh membership list: a cluster
+        that was reduced, or split into standalone servers, otherwise leaves
+        its former peers in the list for good - and an address that once
+        belonged to a peer can by then answer for a machine of its own. The
+        configured host is kept, and so is the host in use, even when the
+        cluster does not name it.
+        """
+        current = self.host
+        kept = [self._hosts[0]] if replace else list(self._hosts)
+        for host in hosts:
+            if isinstance(host, str) and host and host not in kept:
+                kept.append(host)
+        if current not in kept:
+            kept.append(current)
+        self._hosts, self._host_index = kept, kept.index(current)
+
+    async def learn_hosts_from_cluster(self) -> None:
+        """Ask the cluster where else the API answers and remember it."""
+        try:
+            entries = await self.cluster.status()
+        except ProxmoxError as err:
+            _LOGGER.debug("Could not read cluster/status to learn hosts: %s", err)
+            return
+        self.learn_hosts(
+            [
+                str(entry["ip"])
+                for entry in entries
+                if entry.get("type") == "node"
+                and entry.get("ip")
+                and not entry.get("local")
+            ]
+        )
+
+    @property
+    def host(self) -> str:
+        """The host currently in use."""
+        return self._hosts[self._host_index]
+
+    @property
+    def hosts(self) -> tuple[str, ...]:
+        """Every host this client may use, the configured one first."""
+        return tuple(self._hosts)
+
+    def _use_host(self, index: int) -> None:
+        self._host_index = index
+        self.base_url = (
+            f"https://{_normalize_host(self._hosts[index])}:{self._port}/api2/json"
+        )
+        self.auth.base_url = self.base_url
+
+    async def _answers(self) -> bool:
+        """Whether the current host answers `version` within the probe timeout.
+
+        `version` is the one read every credential may make, and it is
+        answered by the host itself rather than forwarded to another node.
+
+        Any answer counts, a refusal included: a host that says 401 is a
+        host that is there. Before a password login there is no ticket to
+        send, so 401 is exactly what a healthy host replies - counting that
+        as silence left a client that had lost its host unable to log in
+        anywhere else.
+        """
+        try:
+            await self._request_once("GET", "version", timeout=PROBE_TIMEOUT)
+        except ProxmoxAPIError as err:
+            _LOGGER.debug("Host %s answered %s; it is there", self.host, err.status)
+        except ProxmoxAuthError:
+            # 401 comes as its own error since the 401 split; still an answer.
+            _LOGGER.debug("Host %s answered 401; it is there", self.host)
+        except ProxmoxError as err:
+            _LOGGER.debug("Host %s did not answer: %s", self.host, err)
+            return False
+        return True
+
+    async def failover(
+        self, *, from_host: str | None = None, verify_current: bool = True
+    ) -> bool:
+        """Move to the next node that answers, once the current one stopped.
+
+        The host is asked first whether it is really gone, because a failed
+        request is not proof that it is: a path names a node, and the host
+        forwards what is not its own - so a guest or a storage on a node
+        that is down fails the connection while the host answering is
+        perfectly well. Switching on that walks the whole cluster and, on a
+        cluster of two, lands on the node that is actually down.
+
+        Several requests may hit a dead host at once; the lock lets the
+        first one switch, and the rest then find a host that answers and
+        leave it alone. A candidate has to answer `version` before it
+        counts. Returns whether this call moved to a working host.
+
+        `from_host` is the host the caller was on when its request
+        failed. Where that is no longer the host in use, another request
+        has already moved the client and this one only has to be repeated
+        - which is what keeps a burst of requests from each taking another
+        step around the cluster.
+
+        `verify_current` is for the callers that already have their proof:
+        the ticket renewal is answered by the host itself and never
+        forwarded, so a connection error there leaves nothing to check.
+        """
+        async with self._switch_lock:
+            start = self._host_index
+            if from_host is not None and from_host != self.host:
+                _LOGGER.debug(
+                    "Another request already moved to %s; repeating this one there",
+                    self.host,
+                )
+                return True
+            if verify_current and await self._answers():
+                _LOGGER.debug(
+                    "%s still answers; leaving the request to fail on its own",
+                    self.host,
+                )
+                return False
+            for offset in range(1, len(self._hosts)):
+                index = (start + offset) % len(self._hosts)
+                self._use_host(index)
+                if not await self._answers():
+                    continue
+                _LOGGER.warning(
+                    "Proxmox at %s stopped answering; using %s until it is back",
+                    self._hosts[start],
+                    self.host,
+                )
+                return True
+            self._use_host(start)
+            return False
+
     async def request(
         self,
         method: str,
@@ -305,10 +469,50 @@ class ProxmoxVE:
         json_data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> Any:
-        """Unified internal request pipeline managing tickets, CSRF tokens, and cookies."""
-        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
-        with _translate_client_errors(url):
-            await self.auth.check_and_refresh(method=method)
+        """Unified request pipeline managing tickets, CSRF tokens and cookies.
+
+        A 401 with password authentication means the ticket died while the
+        host was away: log in again and repeat once. A host that does not
+        answer at all is left for another node of the cluster when one is
+        known, and the request repeated there - the ticket renewal that
+        comes first included, since that is where a dead host is met once
+        the ticket is an hour old.
+        """
+        try:
+            with _translate_client_errors(self.base_url):
+                await self.auth.check_and_refresh(method=method)
+        except ProxmoxConnectionError:
+            # The renewal goes to the host itself, so its failure is proof
+            # enough and there is nothing to ask the host again.
+            if len(self._hosts) < 2 or not await self.failover(verify_current=False):
+                raise
+            with _translate_client_errors(self.base_url):
+                await self.auth.check_and_refresh(method=method)
+        host_before = self.host
+        try:
+            return await self._request_once(method, path, json_data, params)
+        except ProxmoxAuthError:
+            relogin = getattr(self.auth, "relogin", None)
+            if relogin is None:
+                raise
+            _LOGGER.debug("Request to %s refused with 401, logging in again", path)
+            with _translate_client_errors(self.base_url):
+                await relogin()
+            return await self._request_once(method, path, json_data, params)
+        except ProxmoxConnectionError:
+            if len(self._hosts) < 2 or not await self.failover(from_host=host_before):
+                raise
+            return await self._request_once(method, path, json_data, params)
+
+    async def _request_once(
+        self,
+        method: str,
+        path: str,
+        json_data: dict[str, Any] | None = None,
+        params: dict[str, Any] | None = None,
+        timeout: float | None = None,
+    ) -> Any:
+        """One attempt against the current host, in `timeout` at most."""
 
         headers: dict[str, str] = {
             "Accept": "application/json",
@@ -332,14 +536,15 @@ class ProxmoxVE:
         elif json_data:
             request_kwargs["json"] = json_data
 
-        timeout = aiohttp.ClientTimeout(total=self.timeout)
+        url = f"{self.base_url.rstrip('/')}/{path.lstrip('/')}"
+        client_timeout = aiohttp.ClientTimeout(total=timeout or self.timeout)
 
         with _translate_client_errors(url):
             async with self.auth.session.request(
                 method=method,
                 url=url,
                 headers=headers,
-                timeout=timeout,
+                timeout=client_timeout,
                 ssl=self.verify_ssl,
                 **request_kwargs,
             ) as response:

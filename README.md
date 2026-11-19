@@ -123,6 +123,10 @@ lxc_status = proxmox.nodes("pvex").lxc(501).status.current.get()
 print(f"Container Memory: {lxc_status.get('mem')} bytes")
 ```
 
+## Documentation
+
+* [Falling back to another node](docs/failover.md) — how the client learns the cluster's other hosts, and when it moves.
+
 ## Development Diagnostics
 
 The repository provides a diagnostic CLI utility to verify authentication mechanics, cookie/ticket attachment, and data serialization against live systems.
