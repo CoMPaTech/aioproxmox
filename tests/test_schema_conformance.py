@@ -8,8 +8,9 @@ trying them against a real cluster.
 
 Proxmox publishes the whole API as a schema, so this does not have to be
 found by trying: the endpoints are read out of the source and compared
-with `schema/pve_api.json` - path, method and the parameter names that
-are visible in the call.
+with `schema/pve_api.json` - path, method, the parameter names that are
+visible in the call, and the values the call fixes where the schema lists
+the ones it accepts.
 """
 
 from __future__ import annotations
@@ -72,3 +73,32 @@ def test_the_parameters_are_the_ones_proxmox_takes(route: Route) -> None:
         f"{route}: {sorted(route.parameters - known)} is not a parameter here; "
         f"Proxmox takes {sorted(known)}"
     )
+
+
+def unaccepted(route: Route) -> list[str]:
+    """Return the values the route sends that the schema does not list."""
+    enums = API[f"/{route.path}"][route.method].get("enums", {})
+    return [
+        f"{name}={value!r}"
+        for name, value in route.values.items()
+        if name in enums and value not in enums[name]
+    ]
+
+
+@pytest.mark.parametrize("route", [route for route in ROUTES if route.values], ids=repr)
+def test_the_values_are_ones_proxmox_accepts(route: Route) -> None:
+    """Test a value the call fixes - a node command - is one the schema lists."""
+    assert not unaccepted(route), (
+        f"{route}: Proxmox does not accept {unaccepted(route)}"
+    )
+
+
+def test_a_command_proxmox_does_not_know_is_caught() -> None:
+    """Test the check above would catch the bug it is there for.
+
+    Guests were sent a `restart` Proxmox does not know; a node command is
+    the same mistake one level up.
+    """
+    route = Route("POST", "nodes/{node}/status", {"command"}, 0, {"command": "restart"})
+    assert unaccepted(route) == ["command='restart'"]
+    assert any(route.values for route in ROUTES), "no fixed value was read at all"

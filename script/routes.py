@@ -32,12 +32,21 @@ INDIRECT = {"self.path"}
 class Route:
     """One call the library makes: method, path template, visible parameters."""
 
-    def __init__(self, method: str, path: str, parameters: set[str], line: int) -> None:
+    def __init__(
+        self,
+        method: str,
+        path: str,
+        parameters: set[str],
+        line: int,
+        values: dict[str, str] | None = None,
+    ) -> None:
         """Note down where the call is, so a failure can be found."""
         self.method = method
         self.path = path
         self.parameters = parameters
         self.line = line
+        # The values the source fixes, `{"command": "reboot"}`.
+        self.values = values or {}
 
     def __repr__(self) -> str:
         """Return the route as it reads in a test failure."""
@@ -68,22 +77,31 @@ def template_of(node: ast.expr) -> str | None:
     return "".join(parts)
 
 
-def parameters_of(call: ast.Call) -> set[str]:
-    """Return the parameter names the call spells out, if it spells any out."""
+def parameters_of(call: ast.Call) -> tuple[set[str], dict[str, str]]:
+    """Return the parameter names the call spells out, and the values it fixes."""
     names: set[str] = set()
+    values: dict[str, str] = {}
     for keyword in call.keywords:
         if keyword.arg not in ("json_data", "params"):
             continue
         if not isinstance(keyword.value, ast.Dict):
             continue
-        for key in keyword.value.keys:
+        for key, value in zip(keyword.value.keys, keyword.value.values, strict=True):
             if isinstance(key, ast.Constant) and isinstance(key.value, str):
                 names.add(key.value)
-    return names
+                if isinstance(value, ast.Constant) and isinstance(value.value, str):
+                    values[key.value] = value.value
+    return names, values
 
 
 def collect() -> tuple[list[Route], set[str]]:
-    """Return every route the source spells out, and the calls it does not."""
+    """Return every route the source spells out, and the calls it does not.
+
+    A `request` call this cannot read - the method in a variable, the
+    path passed by keyword - goes with the calls it does not spell out,
+    so the test that pins those down notices it instead of the route
+    silently dropping out of the check.
+    """
     tree = ast.parse(ENDPOINTS.read_text(encoding="utf-8"))
     routes: list[Route] = []
     indirect: set[str] = set()
@@ -94,20 +112,17 @@ def collect() -> tuple[list[Route], set[str]]:
             isinstance(node, ast.Call)
             and isinstance(node.func, ast.Attribute)
             and node.func.attr == "request"
-            and len(node.args) >= 2
-            and isinstance(node.args[0], ast.Constant)
         ):
+            if len(node.args) < 2 or not isinstance(node.args[0], ast.Constant):
+                indirect.add(ast.unparse(node))
+                continue
             path = template_of(node.args[1])
             if path is None:
                 indirect.add(ast.unparse(node.args[1]))
                 continue
+            parameters, values = parameters_of(node)
             routes.append(
-                Route(
-                    str(node.args[0].value),
-                    path,
-                    parameters_of(node),
-                    node.lineno,
-                )
+                Route(str(node.args[0].value), path, parameters, node.lineno, values)
             )
             continue
 
@@ -128,7 +143,13 @@ def collect() -> tuple[list[Route], set[str]]:
                 )
             elif factory == "NodeStatusCommand":
                 routes.append(
-                    Route("POST", "nodes/{node}/status", {"command"}, node.lineno)
+                    Route(
+                        "POST",
+                        "nodes/{node}/status",
+                        {"command"},
+                        node.lineno,
+                        {"command": action},
+                    )
                 )
 
     return routes, indirect

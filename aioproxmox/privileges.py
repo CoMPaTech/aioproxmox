@@ -106,7 +106,12 @@ def privileges_for(method: str, path: str, **values: str | int) -> Check | None:
     `privileges_for("GET", "nodes/pve/apt/update")` finds the template
     the path belongs to and hands back the check with the node filled in,
     so the answer names `/nodes/pve` rather than `/nodes/{node}`. None has
-    the same two meanings as for `required_privileges()`.
+    the same two meanings as for `required_privileges()`, and an empty
+    segment (`nodes//status`) matches nothing.
+
+    `values` fills placeholders the path does not carry. One the path does
+    carry has to agree with it: `vmid=999` on `.../qemu/101/...` raises
+    `ValueError` rather than quietly answering for one of the two.
     """
     method = method.upper()
     parts = path.strip("/").split("/")
@@ -119,7 +124,13 @@ def privileges_for(method: str, path: str, **values: str | int) -> Check | None:
         filled = dict(values)
         for segment, part in zip(segments, parts, strict=True):
             if segment.startswith("{") and segment.endswith("}"):
-                filled[segment[1:-1]] = part
+                if not part:
+                    break
+                name = segment[1:-1]
+                if name in values and str(values[name]) != part:
+                    msg = f"{name}={values[name]!r} contradicts the path {path!r}"
+                    raise ValueError(msg)
+                filled[name] = part
                 continue
             if segment != part:
                 break

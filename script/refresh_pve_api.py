@@ -7,7 +7,8 @@ machine-readable description Proxmox publishes, and it is what the
 conformance test and the privilege map are built from.
 
 Kept here are the facts a client needs - paths, methods, parameter names,
-permission checks. The prose (descriptions, defaults, formats) is left
+the values a parameter accepts where the schema lists them, permission
+checks. The prose (descriptions, defaults, formats) is left
 where it belongs, in the documentation the file comes from.
 
 Run `python script/refresh_pve_api.py` after a Proxmox release and commit
@@ -43,11 +44,19 @@ def fetch(url: str = SOURCE) -> tuple[list[dict[str, Any]], str]:
     `Last-Modified` is the only version marker there is - the JavaScript
     carries none.
     """
-    with urlopen(url) as response:
+    with urlopen(url, timeout=60) as response:
         text = response.read().decode("utf-8")
         last_modified = response.headers.get("Last-Modified", "")
-    start = text.index("[")
-    end = text.index("\n]\n;") + 2
+    try:
+        start = text.index("[")
+        end = text.index("\n]\n;") + 2
+    except ValueError as error:
+        msg = (
+            f"{url} no longer has the shape this script reads - one JSON "
+            "array assigned and closed with `\\n]\\n;`. Look at the file "
+            "before changing the parser."
+        )
+        raise ValueError(msg) from error
     parsed: list[dict[str, Any]] = json.loads(text[start:end])
     return parsed, last_modified
 
@@ -66,14 +75,27 @@ def routes_of(extract: dict[str, Any]) -> dict[str, Any]:
 
 
 def flatten(nodes: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
-    """Return {path: {method: {parameters, check}}} for the whole tree."""
+    """Return {path: {method: {parameters, enums, check}}} for the whole tree."""
     routes: dict[str, dict[str, Any]] = {}
     for node in nodes:
         for method, info in (node.get("info") or {}).items():
             properties = (info.get("parameters") or {}).get("properties") or {}
             entry: dict[str, Any] = {"parameters": sorted(properties)}
-            if check := (info.get("permissions") or {}).get("check"):
-                entry["check"] = check
+            # The values a parameter takes, where the schema lists them: a
+            # node is sent `reboot` or `shutdown`, and nothing else.
+            enums = {
+                name: spec["enum"]
+                for name, spec in properties.items()
+                if isinstance(spec, dict) and "enum" in spec
+            }
+            if enums:
+                entry["enums"] = enums
+            # Kept as soon as the key is there: an empty check is malformed,
+            # and the generator should get to refuse it rather than never
+            # see it.
+            permissions = info.get("permissions") or {}
+            if "check" in permissions:
+                entry["check"] = permissions["check"]
             routes.setdefault(node["path"], {})[method] = entry
         routes.update(flatten(node.get("children") or []))
     return routes
