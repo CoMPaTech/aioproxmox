@@ -138,8 +138,8 @@ def main() -> None:
             f"routes changed: {len(gained)} paths gained, {len(lost)} lost, "
             f"{len(changed)} changed"
         )
-        for mark, paths in (("+", gained), ("-", lost), ("~", changed)):
-            for path in paths:
+        for mark, listed in (("+", gained), ("-", lost), ("~", changed)):
+            for path in listed:
                 print(f"  {mark} {path}")
 
 
