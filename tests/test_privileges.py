@@ -147,6 +147,12 @@ def test_a_value_that_contradicts_the_path() -> None:
     check = privileges_for("POST", "nodes/pve/qemu/101/agent/ping", vmid=101)
     assert check is not None
     assert next(iter(check)).path == "/vms/101"
+    # A path that is no route's has nothing to contradict.
+    assert privileges_for("POST", "nodes/pve/qemu/101/no/such", vmid=999) is None
+    # And a value the route has no placeholder for changes nothing.
+    assert privileges_for("GET", "nodes/pve/status", storage="local") == (
+        privileges_for("GET", "nodes/pve/status")
+    )
 
 
 def test_the_generated_data_is_what_the_schema_says() -> None:

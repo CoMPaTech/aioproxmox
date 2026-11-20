@@ -94,15 +94,19 @@ def parameters_of(call: ast.Call) -> tuple[set[str], dict[str, str]]:
     return names, values
 
 
-def collect() -> tuple[list[Route], set[str]]:
+def collect(source: str | None = None) -> tuple[list[Route], set[str]]:
     """Return every route the source spells out, and the calls it does not.
 
     A `request` call this cannot read - the method in a variable, the
     path passed by keyword - goes with the calls it does not spell out,
     so the test that pins those down notices it instead of the route
     silently dropping out of the check.
+
+    Reads `endpoints.py` unless it is handed source of its own.
     """
-    tree = ast.parse(ENDPOINTS.read_text(encoding="utf-8"))
+    if source is None:
+        source = ENDPOINTS.read_text(encoding="utf-8")
+    tree = ast.parse(source)
     routes: list[Route] = []
     indirect: set[str] = set()
 
@@ -126,10 +130,10 @@ def collect() -> tuple[list[Route], set[str]]:
             )
             continue
 
-        # `start = qemu_action("start")`, and the node commands that go
-        # through the status endpoint with a `command`.
+        # `start = qemu_action("start")`, annotated or not, and the node
+        # commands that go through the status endpoint with a `command`.
         if (
-            isinstance(node, ast.Assign)
+            isinstance(node, ast.Assign | ast.AnnAssign)
             and isinstance(node.value, ast.Call)
             and isinstance(node.value.func, ast.Name)
             and node.value.args

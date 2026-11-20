@@ -133,10 +133,14 @@ def main() -> None:
     else:
         gained = sorted(set(new) - set(old))
         lost = sorted(set(old) - set(new))
+        changed = sorted(path for path in set(old) & set(new) if old[path] != new[path])
         print(
             f"routes changed: {len(gained)} paths gained, {len(lost)} lost, "
-            "the rest compared as data"
+            f"{len(changed)} changed"
         )
+        for mark, paths in (("+", gained), ("-", lost), ("~", changed)):
+            for path in paths:
+                print(f"  {mark} {path}")
 
 
 if __name__ == "__main__":

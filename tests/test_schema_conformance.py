@@ -93,6 +93,19 @@ def test_the_values_are_ones_proxmox_accepts(route: Route) -> None:
     )
 
 
+def test_an_annotated_action_is_read_too() -> None:
+    """Test a type annotation does not take an action out of the check."""
+    routes, _ = collect(
+        "class Qemu:\n"
+        '    start: PostAction = qemu_action("start")\n'
+        '    reboot: NodeStatusCommand = NodeStatusCommand("reboot")\n'
+    )
+    assert [(route.method, route.path, route.values) for route in routes] == [
+        ("POST", "nodes/{node}/qemu/{vmid}/status/start", {}),
+        ("POST", "nodes/{node}/status", {"command": "reboot"}),
+    ]
+
+
 def test_a_command_proxmox_does_not_know_is_caught() -> None:
     """Test the check above would catch the bug it is there for.
 

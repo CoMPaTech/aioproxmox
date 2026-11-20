@@ -111,7 +111,10 @@ def privileges_for(method: str, path: str, **values: str | int) -> Check | None:
 
     `values` fills placeholders the path does not carry. One the path does
     carry has to agree with it: `vmid=999` on `.../qemu/101/...` raises
-    `ValueError` rather than quietly answering for one of the two.
+    `ValueError` rather than quietly answering for one of the two - once
+    the path is a route's at all; a path that matches nothing is None
+    whatever is passed along. A value for a placeholder the route does not
+    have is left unused.
     """
     method = method.upper()
     parts = path.strip("/").split("/")
@@ -121,19 +124,19 @@ def privileges_for(method: str, path: str, **values: str | int) -> Check | None:
         segments = template.split("/")
         if len(segments) != len(parts):
             continue
-        filled = dict(values)
+        carried: dict[str, str] = {}
         for segment, part in zip(segments, parts, strict=True):
             if segment.startswith("{") and segment.endswith("}"):
                 if not part:
                     break
-                name = segment[1:-1]
-                if name in values and str(values[name]) != part:
-                    msg = f"{name}={values[name]!r} contradicts the path {path!r}"
-                    raise ValueError(msg)
-                filled[name] = part
+                carried[segment[1:-1]] = part
                 continue
             if segment != part:
                 break
         else:
-            return _check(entry).substitute(**filled)
+            for name, part in carried.items():
+                if name in values and str(values[name]) != part:
+                    msg = f"{name}={values[name]!r} contradicts the path {path!r}"
+                    raise ValueError(msg)
+            return _check(entry).substitute(**{**values, **carried})
     return None
