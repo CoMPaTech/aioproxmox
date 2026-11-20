@@ -224,7 +224,7 @@ class QemuStatusEndpoint:
             await self.client.request(
                 "POST",
                 f"nodes/{self.node}/qemu/{self.vmid}/snapshot",
-                data=payload,
+                json_data=payload,
             )
         )
 
@@ -303,14 +303,12 @@ class LXCStatusEndpoint:
 
     async def snapshot(
         self,
-        snap_name: str | None = None,
+        snap_name: str,
         snap_description: str | None = None,
-        snap_state: bool = True,
     ) -> str:
         """Create a new Snapshot for a VM."""
         payload = {
             "snapname": snap_name,
-            "vmstate": int(snap_state),  # Note, convert bool back to int
         }
         if snap_description:
             payload["description"] = snap_description
@@ -319,7 +317,7 @@ class LXCStatusEndpoint:
             await self.client.request(
                 "POST",
                 f"nodes/{self.node}/lxc/{self.vmid}/snapshot",
-                data=payload,
+                json_data=payload,
             )
         )
 
@@ -348,8 +346,20 @@ class AccessEndpoint:
         """Endpoint initialisation."""
         self.client = client
 
-    async def permissions(self) -> PVEPermissions:
-        """Fetch the full, granular ACL permissions map for the active session."""
+    async def permissions(self, path: str | None = None) -> PVEPermissions:
+        """Fetch effective ACL permissions for the active session.
+
+        Without ``path`` the whole tree is fetched and cached on the client.
+        With ``path`` only that path is resolved, which also reflects a NoAccess
+        ACL the whole-tree response cannot show; the result is not cached and
+        only answers for that exact path.
+        """
+        if path is not None:
+            raw = await self.client.request(
+                "GET", "access/permissions", params={"path": path}
+            )
+            return PVEPermissions.from_api_response(raw, scope=path)
+
         raw = await self.client.request("GET", "access/permissions")
         self.client.permissions = PVEPermissions.from_api_response(raw)
 

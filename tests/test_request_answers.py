@@ -6,7 +6,7 @@ import aiohttp
 import pytest
 
 from aioproxmox import ProxmoxVE
-from aioproxmox.exceptions import ProxmoxAPIError
+from aioproxmox.exceptions import ProxmoxAPIError, ProxmoxNodeUnreachableError
 
 
 def _client(response: AsyncMock) -> ProxmoxVE:
@@ -86,3 +86,20 @@ async def test_an_error_keeps_a_body_that_says_more():
         ProxmoxAPIError, match="Internal Server Error: VM 101 is locked"
     ):
         await pve.request("POST", "nodes/pve-01/qemu/101/status/start")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("status", "reason"),
+    [(595, "No route to host"), (596, "Connection timed out")],
+)
+async def test_an_unreachable_node_has_its_own_error(status: int, reason: str):
+    """The node pveproxy proxied the request to could not be reached."""
+    pve = _client(_response(status, text="", reason=reason))
+
+    with pytest.raises(ProxmoxNodeUnreachableError, match=reason) as err:
+        await pve.request("GET", "nodes/pve-02/qemu")
+
+    assert isinstance(err.value, ProxmoxAPIError)
+    assert err.value.status == status
+    assert err.value.endpoint == "nodes/pve-02/qemu"
