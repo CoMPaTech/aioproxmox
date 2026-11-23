@@ -75,6 +75,12 @@ means the host is gone. A probe gets `PROBE_TIMEOUT` or the client's own
 waited that out, and with a long timeout a cluster of four would otherwise
 spend minutes establishing what it could say in seconds.
 
+Proxmox holds a `401` back for about three seconds - for a token it does
+not know, a ticket that has run out and a login it refuses alike. A
+`timeout` of three seconds or less ends before that answer comes, so the
+refusal reads as a host that is silent, here and in any request. The
+default of five leaves room for it.
+
 A candidate is asked by its own address, and the client stays where it is
 until one has answered. Only the requests that failed wait for that; the
 others keep going to the host in use rather than to one nobody has heard
