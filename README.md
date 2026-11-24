@@ -125,6 +125,7 @@ print(f"Container Memory: {lxc_status.get('mem')} bytes")
 
 ## Documentation
 
+* [Falling back to another node](docs/failover.md) — how the client learns the cluster's other hosts, and when it moves.
 * [The Proxmox API schema](docs/schema.md) — where `schema/pve_api.json` comes from, and how the endpoints are held against it.
 
 ## Development Diagnostics

@@ -12,6 +12,7 @@ whether one of them is enough.
 """
 
 CHECKS: dict[tuple[str, str], tuple[tuple[str, tuple[str, ...], bool], ...]] = {
+    ("GET", "cluster/status"): (("/", ("Sys.Audit",), False),),
     ("GET", "nodes/{node}/apt/update"): (("/nodes/{node}", ("Sys.Modify",), False),),
     ("GET", "nodes/{node}/lxc/{vmid}/status/current"): (
         ("/vms/{vmid}", ("VM.Audit",), False),

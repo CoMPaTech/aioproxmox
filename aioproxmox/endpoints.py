@@ -458,6 +458,20 @@ class ClusterEndpoint:
         """Endpoint initialisation."""
         self.client = client
 
+    async def status(self) -> list[dict[str, Any]]:
+        """Fetch `cluster/status`: the cluster entry and one entry per node.
+
+        Each node entry carries the address it joined the cluster on (`ip`)
+        and whether it is the node answering (`local`) - what `learn_hosts()`
+        uses to know where else the API answers.
+        """
+        raw = await self.client.request("GET", "cluster/status")
+        return (
+            [entry for entry in raw if isinstance(entry, dict)]
+            if isinstance(raw, list)
+            else []
+        )
+
     async def resources(self) -> ClusterResourcesCollection:
         """A direct, optimized call returning the complete cluster resources block."""
         raw = await self.client.request("GET", "cluster/resources")
