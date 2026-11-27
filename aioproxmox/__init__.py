@@ -535,8 +535,11 @@ class ProxmoxVE:
         path: str,
         json_data: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
+        timeout: float | None = None,
     ) -> Any:
         """Unified request pipeline managing tickets, CSRF tokens and cookies.
+
+        `timeout` overrides the client timeout for this request only.
 
         A 401 with password authentication means the ticket died while the
         host was away: log in again and repeat once. A host that does not
@@ -571,7 +574,9 @@ class ProxmoxVE:
         while True:
             host_before = self.host
             try:
-                return await self._request_once(method, path, json_data, params)
+                return await self._request_once(
+                    method, path, json_data, params, timeout
+                )
             except ProxmoxAuthError:
                 relogin = getattr(self.auth, "relogin", None)
                 if relogin is None or logged_in:

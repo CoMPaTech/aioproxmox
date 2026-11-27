@@ -18,6 +18,7 @@ from .model.pve import (
     NodeTask,
     NodeTasks,
     NodeVersion,
+    QemuAgentStatus,
     QemuResource,
     QemuStatus,
 )
@@ -146,15 +147,30 @@ class QemuAgentEndpoint:
         """Return generic agent info."""
         raise NotImplementedError
 
-    async def ping(self) -> bool:
-        """Ping agent for reply on alive."""
+    async def ping(self, timeout: float | None = None) -> QemuAgentStatus:
+        """Ping the guest agent and return how it answered.
+
+        Proxmox gives up on an agent that does not answer after 3 seconds.
+        Errors other than the agent or VM not running are raised, so a
+        refused permission or an unreachable node is never read as a dead agent.
+        """
         try:
             await self.client.request(
-                "POST", f"nodes/{self.node}/qemu/{self.vmid}/agent/ping"
+                "POST",
+                f"nodes/{self.node}/qemu/{self.vmid}/agent/ping",
+                timeout=timeout,
             )
-        except ProxmoxAPIError:
-            return False
-        return True
+        except ProxmoxAPIError as err:
+            if err.status != 500:
+                raise
+            if "QEMU guest agent is not running" in err.message:
+                return QemuAgentStatus.NOT_RUNNING
+            if "No QEMU guest agent configured" in err.message:
+                return QemuAgentStatus.NOT_CONFIGURED
+            if f"VM {self.vmid} is not running" in err.message:
+                return QemuAgentStatus.VM_NOT_RUNNING
+            raise
+        return QemuAgentStatus.RESPONDING
 
 
 class QemuStatusEndpoint:

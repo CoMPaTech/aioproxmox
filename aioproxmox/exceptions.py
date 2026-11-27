@@ -16,6 +16,7 @@ class ProxmoxAPIError(ProxmoxError):
         """Format error string."""
         super().__init__(f"PVE API Error {status} at {endpoint}: {message}")
         self.status = status
+        self.message = message
         self.endpoint = endpoint
 
 
