@@ -68,6 +68,15 @@ class OperationalStatus(StrEnum):
         return cls.UNKNOWN
 
 
+class QemuAgentStatus(StrEnum):
+    """Answer of the QEMU guest agent to a ping."""
+
+    RESPONDING = "responding"
+    NOT_RUNNING = "not_running"
+    NOT_CONFIGURED = "not_configured"
+    VM_NOT_RUNNING = "vm_not_running"
+
+
 class AptArchType(StrEnum):
     """Architecture types from apt."""
 

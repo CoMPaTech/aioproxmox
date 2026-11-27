@@ -11,13 +11,19 @@ from aioproxmox.endpoints import (
     NodeEndpoint,
     QemuStatusEndpoint,
 )
-from aioproxmox.exceptions import ProxmoxAPIError, ResourceNotFoundError
+from aioproxmox.exceptions import (
+    ProxmoxAPIError,
+    ProxmoxNodeUnreachableError,
+    ProxmoxTimeoutError,
+    ResourceNotFoundError,
+)
 from aioproxmox.model.pve import (
     AptArchType,
     ClusterCache,
     ClusterQemuResource,
     ClusterResourcesCollection,
     OperationalStatus,
+    QemuAgentStatus,
     QemuStatus,
     ResourceType,
 )
@@ -87,21 +93,89 @@ async def test_qemu_endpoint_actions():
 
 
 @pytest.mark.asyncio
-async def test_agent_ping():
-    """Test Qemu Agent Ping."""
+async def test_agent_ping_responding():
+    """Test a guest agent that answers the ping."""
     mock_client = MagicMock()
-    mock_client.request = AsyncMock()
+    mock_client.request = AsyncMock(return_value={"result": {}})
 
-    node_endpoint = NodeEndpoint(mock_client, "pve-01")
-    agent = node_endpoint.qemu(101).agent
+    agent = NodeEndpoint(mock_client, "pve-01").qemu(101).agent
 
-    result = await agent.ping()
-    assert result is True
-    mock_client.request.assert_called_with("POST", "nodes/pve-01/qemu/101/agent/ping")
+    assert await agent.ping(timeout=5) is QemuAgentStatus.RESPONDING
+    mock_client.request.assert_called_with(
+        "POST", "nodes/pve-01/qemu/101/agent/ping", timeout=5
+    )
 
-    # Simulate failure
-    mock_client.request.side_effect = ProxmoxAPIError("status", "message", "endpoint")
-    assert await agent.ping() is False
+
+# Messages as PVE 9.2 answers them, with the reason phrase in front
+@pytest.mark.parametrize(
+    ("message", "expected"),
+    [
+        pytest.param(
+            'QEMU guest agent is not running: {"message":"QEMU guest agent is not running\\n","data":null}',
+            QemuAgentStatus.NOT_RUNNING,
+            id="agent_not_running",
+        ),
+        pytest.param(
+            'No QEMU guest agent configured: {"message":"No QEMU guest agent configured\\n","data":null}',
+            QemuAgentStatus.NOT_CONFIGURED,
+            id="agent_not_configured",
+        ),
+        pytest.param(
+            'VM 101 is not running: {"message":"VM 101 is not running\\n","data":null}',
+            QemuAgentStatus.VM_NOT_RUNNING,
+            id="vm_not_running",
+        ),
+    ],
+)
+@pytest.mark.asyncio
+async def test_agent_ping_not_answering(message: str, expected: QemuAgentStatus):
+    """Test the answers Proxmox gives when the agent can't be pinged."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(
+        side_effect=ProxmoxAPIError(500, message, "nodes/pve-01/qemu/101/agent/ping")
+    )
+
+    agent = NodeEndpoint(mock_client, "pve-01").qemu(101).agent
+
+    assert await agent.ping() is expected
+
+
+@pytest.mark.parametrize(
+    "error",
+    [
+        pytest.param(
+            ProxmoxAPIError(403, "Permission check failed", "ping"),
+            id="permission_denied",
+        ),
+        pytest.param(
+            ProxmoxAPIError(
+                500,
+                "Configuration file 'nodes/pve-01/qemu-server/101.conf' does not exist",
+                "ping",
+            ),
+            id="unknown_500",
+        ),
+        pytest.param(
+            ProxmoxAPIError(500, "VM 1011 is not running", "ping"),
+            id="other_vm_not_running",
+        ),
+        pytest.param(
+            ProxmoxNodeUnreachableError(595, "No route to host", "ping"),
+            id="node_unreachable",
+        ),
+        pytest.param(ProxmoxTimeoutError("Timeout"), id="timeout"),
+    ],
+)
+@pytest.mark.asyncio
+async def test_agent_ping_raises(error: Exception):
+    """Test that errors not about the agent are raised, not read as a dead agent."""
+    mock_client = MagicMock()
+    mock_client.request = AsyncMock(side_effect=error)
+
+    agent = NodeEndpoint(mock_client, "pve-01").qemu(101).agent
+
+    with pytest.raises(type(error)):
+        await agent.ping()
 
 
 @pytest.mark.asyncio
